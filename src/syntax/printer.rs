@@ -155,8 +155,10 @@ impl Printer {
             (PrintMode::UnicodeOperators, BinaryOp::Ne) => "≠",
             (_, BinaryOp::Ne) => "!=",
             (_, BinaryOp::Lt) => "<",
+            (PrintMode::UnicodeOperators, BinaryOp::Le) => "≤",
             (_, BinaryOp::Le) => "<=",
             (_, BinaryOp::Gt) => ">",
+            (PrintMode::UnicodeOperators, BinaryOp::Ge) => "≥",
             (_, BinaryOp::Ge) => ">=",
             (PrintMode::Keywords, BinaryOp::And) => "and",
             (PrintMode::AsciiOperators, BinaryOp::And) => "/\\",
@@ -351,6 +353,14 @@ mod tests {
             print("property p { x != 0 }", PrintMode::UnicodeOperators),
             "property p {\n  x ≠ 0\n}\n"
         );
+        assert_eq!(
+            print("property p { x <= 1 }", PrintMode::UnicodeOperators),
+            "property p {\n  x ≤ 1\n}\n"
+        );
+        assert_eq!(
+            print("property p { x >= 1 }", PrintMode::UnicodeOperators),
+            "property p {\n  x ≥ 1\n}\n"
+        );
     }
 
     #[test]
@@ -369,6 +379,14 @@ mod tests {
         assert_eq!(
             print("property p { x ≠ 0 }", PrintMode::AsciiOperators),
             "property p {\n  x != 0\n}\n"
+        );
+        assert_eq!(
+            print("property p { x ≤ 1 }", PrintMode::AsciiOperators),
+            "property p {\n  x <= 1\n}\n"
+        );
+        assert_eq!(
+            print("property p { x ≥ 1 }", PrintMode::AsciiOperators),
+            "property p {\n  x >= 1\n}\n"
         );
     }
 

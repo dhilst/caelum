@@ -339,9 +339,9 @@ fn binary_op_from_pair(pair: Pair<'_, Rule>) -> BinaryOp {
             "=" => BinaryOp::Eq,
             "!=" | "≠" => BinaryOp::Ne,
             "<" => BinaryOp::Lt,
-            "<=" => BinaryOp::Le,
+            "<=" | "≤" => BinaryOp::Le,
             ">" => BinaryOp::Gt,
-            ">=" => BinaryOp::Ge,
+            ">=" | "≥" => BinaryOp::Ge,
             op => unreachable!("unexpected comparison operator: {op}"),
         },
         rule => unreachable!("unexpected binary operator rule: {rule:?}"),
@@ -555,5 +555,13 @@ mod tests {
         let ascii_ne = first_property_expr("property p { x != 0 }");
         let unicode_ne = first_property_expr("property p { x ≠ 0 }");
         assert_eq!(ascii_ne, unicode_ne);
+
+        let ascii_le = first_property_expr("property p { x <= 1 }");
+        let unicode_le = first_property_expr("property p { x ≤ 1 }");
+        assert_eq!(ascii_le, unicode_le);
+
+        let ascii_ge = first_property_expr("property p { x >= 1 }");
+        let unicode_ge = first_property_expr("property p { x ≥ 1 }");
+        assert_eq!(ascii_ge, unicode_ge);
     }
 }

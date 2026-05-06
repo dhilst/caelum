@@ -55,7 +55,7 @@ implies_op = { "->" | "→" }
 iff_op = { "<->" | "↔" }
 add_op = { "+" | "-" }
 mul_op = { "*" | "/" | "mod" }
-comp_op = { "=" | "!=" | "≠" | "<=" | "<" | ">=" | ">" }
+comp_op = { "=" | "!=" | "≠" | "<=" | "≤" | "<" | ">=" | "≥" | ">" }
 
 primed_ident = { ident ~ "'" }
 ident = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
