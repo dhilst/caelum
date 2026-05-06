@@ -1315,4 +1315,152 @@ mod tests {
         );
         assert!(report.properties[1].counterexample.is_none());
     }
+
+    #[test]
+    fn multiple_properties_mixed_pass_fail_independence() {
+        // Single system with 8 properties across safety/liveness/next/until.
+        // 4 should pass, 4 should fail. Each result must be independent.
+        //
+        // System: counter cycles 0->1->2->3->0 with a stutter at x=2 (x=2 can
+        // stay at 2). This gives non-determinism and interesting temporal behavior.
+        //
+        // Passing properties:
+        //   1. safety_pass:   always (x >= 0)            -- trivially true over domain
+        //   2. liveness_pass: eventually (x = 2)         -- all paths reach 2
+        //   3. next_pass:     next (x = 1)               -- from x=0, only successor is x=1
+        //   4. until_pass:    (x >= 0) until (x = 1)      -- from x=0, next is x=1; lhs holds until rhs
+        //
+        // Failing properties:
+        //   5. safety_fail:   always (x != 3)            -- x reaches 3
+        //   6. liveness_fail: eventually (x > 3)          -- x never exceeds 3 in domain 0..3
+        //   7. next_fail:     next (x = 0)               -- from x=0, next is x=1, not x=0
+        //   8. until_fail:    (x = 0) until (x = 3)      -- x=0 breaks at x=1 before reaching x=3
+        let report = report(
+            r"
+            let x: 0..3
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 4 }
+            transition stutter { x = 2 and x' = 2 }
+
+            property safety_pass   { always (x >= 0) }
+            property liveness_pass { eventually (x = 2) }
+            property next_pass     { next (x = 1) }
+            property until_pass    { (x >= 0) until (x = 1) }
+
+            property safety_fail   { always (x != 3) }
+            property liveness_fail { eventually (x > 3) }
+            property next_fail     { next (x = 0) }
+            property until_fail    { (x = 0) until (x = 3) }
+            ",
+        )
+        .expect("check should run");
+
+        // Overall status must be Fail since at least one property fails
+        assert_eq!(report.status, CheckStatus::Fail);
+        assert_eq!(report.properties.len(), 8, "should have exactly 8 properties");
+
+        // Verify the exact pass/fail pattern
+        let expected: Vec<(&str, CheckStatus)> = vec![
+            ("safety_pass",   CheckStatus::Pass),
+            ("liveness_pass", CheckStatus::Pass),
+            ("next_pass",     CheckStatus::Pass),
+            ("until_pass",    CheckStatus::Pass),
+            ("safety_fail",   CheckStatus::Fail),
+            ("liveness_fail", CheckStatus::Fail),
+            ("next_fail",     CheckStatus::Fail),
+            ("until_fail",    CheckStatus::Fail),
+        ];
+
+        for (i, (name, status)) in expected.iter().enumerate() {
+            assert_eq!(
+                &report.properties[i].name, name,
+                "property {} should be named '{}'",
+                i, name
+            );
+            assert_eq!(
+                report.properties[i].status, *status,
+                "property '{}' should {:?}",
+                name, status
+            );
+
+            // Passing properties must not have counterexamples
+            if *status == CheckStatus::Pass {
+                assert!(
+                    report.properties[i].counterexample.is_none(),
+                    "passing property '{}' should have no counterexample",
+                    name
+                );
+            } else {
+                assert!(
+                    report.properties[i].counterexample.is_some(),
+                    "failing property '{}' should have a counterexample",
+                    name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn property_results_independent_of_neighbors() {
+        // Verify that a property's result does not change when surrounded by
+        // different numbers of other passing or failing properties.
+        // We run two specs on the same system -- one with 5 properties (3 pass, 2 fail)
+        // and a subset with just 2 of those properties (1 pass, 1 fail) -- and confirm
+        // the shared properties produce identical results.
+        //
+        // System: absorbing counter 0->1->2->2.
+        let full_report = report(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition inc { x < 2 and x' = x + 1 }
+            transition absorb { x = 2 and x' = 2 }
+
+            property reaches_two       { eventually (x = 2) }
+            property stays_in_range    { always (x >= 0 and x <= 2) }
+            property next_is_one       { next (x = 1) }
+            property always_zero_fails { always (x = 0) }
+            property reaches_five      { eventually (x = 5) }
+            ",
+        )
+        .expect("full check should run");
+
+        let subset_report = report(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition inc { x < 2 and x' = x + 1 }
+            transition absorb { x = 2 and x' = 2 }
+
+            property next_is_one       { next (x = 1) }
+            property always_zero_fails { always (x = 0) }
+            ",
+        )
+        .expect("subset check should run");
+
+        // Full report expectations: 3 pass, 2 fail
+        assert_eq!(full_report.properties.len(), 5);
+        assert_eq!(full_report.properties[0].status, CheckStatus::Pass, "reaches_two should pass");
+        assert_eq!(full_report.properties[1].status, CheckStatus::Pass, "stays_in_range should pass");
+        assert_eq!(full_report.properties[2].status, CheckStatus::Pass, "next_is_one should pass");
+        assert_eq!(full_report.properties[3].status, CheckStatus::Fail, "always_zero_fails should fail");
+        assert_eq!(full_report.properties[4].status, CheckStatus::Fail, "reaches_five should fail");
+
+        // Subset report expectations: 1 pass, 1 fail
+        assert_eq!(subset_report.properties.len(), 2);
+        assert_eq!(subset_report.properties[0].status, CheckStatus::Pass, "next_is_one should pass in subset");
+        assert_eq!(subset_report.properties[1].status, CheckStatus::Fail, "always_zero_fails should fail in subset");
+
+        // The shared properties must produce the same results regardless of context
+        assert_eq!(
+            full_report.properties[2].status,
+            subset_report.properties[0].status,
+            "next_is_one result must be identical in full and subset reports"
+        );
+        assert_eq!(
+            full_report.properties[3].status,
+            subset_report.properties[1].status,
+            "always_zero_fails result must be identical in full and subset reports"
+        );
+    }
 }
