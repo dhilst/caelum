@@ -1119,6 +1119,125 @@ mod tests {
     }
 
     #[test]
+    fn multiple_init_blocks_conjunction_restricts_initial_states() {
+        // Two int variables x: 0..3, y: 0..3 with four separate init blocks.
+        // Full domain: 4 * 4 = 16 states.
+        // Init blocks (conjunction):
+        //   init { x >= 1 }      -> x in {1, 2, 3}
+        //   init { x <= 2 }      -> x in {0, 1, 2}
+        //   init { y >= 2 }      -> y in {2, 3}
+        //   init { y <= 2 }      -> y in {0, 1, 2}
+        // Intersection: x in {1, 2}, y in {2} => initial states: (1,2), (2,2), plus
+        //   we need to also check (x=1,y=2) and (x=2,y=2). Wait:
+        //   x >= 1 AND x <= 2 => x in {1, 2}
+        //   y >= 2 AND y <= 2 => y = 2
+        // So exactly 2 initial states: (1,2) and (2,2).
+        //
+        // Transition: both x and y cycle mod 4, so all 16 states are eventually reachable
+        // from any starting point -- but reachability is still restricted by the initial set.
+        // Actually with x' = (x+1) mod 4 and y' = (y+1) mod 4, from (1,2):
+        //   (1,2) -> (2,3) -> (3,0) -> (0,1) -> (1,2) -- cycle of 4
+        // From (2,2):
+        //   (2,2) -> (3,3) -> (0,0) -> (1,1) -> (2,2) -- cycle of 4
+        // These two cycles are disjoint: {(1,2),(2,3),(3,0),(0,1)} and {(2,2),(3,3),(0,0),(1,1)}
+        // Total reachable: 8 states, 8 edges.
+        //
+        // If the init blocks were OR'd instead of AND'd, many more initial states would exist.
+        // This test confirms they are AND'd (conjunction).
+        let graph = graph(
+            r"
+            let x: 0..3
+            let y: 0..3
+            init { x >= 1 }
+            init { x <= 2 }
+            init { y >= 2 }
+            init { y <= 2 }
+            transition step { x' = (x + 1) mod 4 and y' = (y + 1) mod 4 }
+            property p { □ (x >= 0 and y >= 0) }
+            ",
+        )
+        .expect("graph should build with multiple init blocks");
+
+        // Conjunction of 4 init blocks: x in {1,2}, y = 2 => 2 initial states
+        assert_eq!(
+            graph.initial_states.len(),
+            2,
+            "conjunction of 4 init blocks should yield exactly 2 initial states (not 16)"
+        );
+
+        // Reachability: two disjoint 4-cycles from (1,2) and (2,2)
+        assert_eq!(
+            graph.states.len(),
+            8,
+            "8 of 16 cross-product states reachable from the 2 initial states"
+        );
+        assert_eq!(graph.edge_count(), 8, "deterministic: 8 states, 8 edges");
+    }
+
+    #[test]
+    fn multiple_init_blocks_restrict_reachability_vs_single_init() {
+        // Same model with a single permissive init vs. multiple restrictive init blocks.
+        // This directly tests that adding more init blocks narrows reachability.
+        //
+        // Variable x: 0..3 with nondeterministic transitions: x can increment or stay.
+        // Single init: x >= 0 => all 4 values are initial => all 4 reachable.
+        // Multiple init blocks (conjunction): x >= 1 AND x <= 2 => x in {1,2} initial.
+        //   From x=1: stay->1, inc->2. From x=2: stay->2, inc->3. From x=3: stay->3 (inc
+        //   guarded by x<3 fails, but stay is always valid).
+        //   Reachable: {1, 2, 3} -- x=0 is unreachable because no transition decrements.
+        //
+        // With the single init, 4 states are reachable. With multiple init blocks, only 3.
+        let graph_single = graph(
+            r"
+            let x: 0..3
+            init { x >= 0 }
+            transition inc  { x < 3 and x' = x + 1 }
+            transition stay { x' = x }
+            property p { □ (x >= 0) }
+            ",
+        )
+        .expect("single init graph should build");
+
+        let graph_multi = graph(
+            r"
+            let x: 0..3
+            init { x >= 1 }
+            init { x <= 2 }
+            transition inc  { x < 3 and x' = x + 1 }
+            transition stay { x' = x }
+            property p { □ (x >= 0) }
+            ",
+        )
+        .expect("multi init graph should build");
+
+        // Single init: all 4 values are initial and reachable
+        assert_eq!(graph_single.initial_states.len(), 4);
+        assert_eq!(graph_single.states.len(), 4);
+
+        // Multiple init (conjunction): x in {1,2} initially, x=0 unreachable
+        assert_eq!(
+            graph_multi.initial_states.len(),
+            2,
+            "conjunction of x>=1 and x<=2 yields 2 initial states"
+        );
+        assert_eq!(
+            graph_multi.states.len(),
+            3,
+            "only 3 states reachable (x=0 unreachable due to restricted init)"
+        );
+
+        // Verify x=0 is not in the reachable set
+        let has_zero = graph_multi
+            .states
+            .iter()
+            .any(|s| s.values == vec![Value::Int(0)]);
+        assert!(
+            !has_zero,
+            "x=0 should be unreachable when init blocks restrict to x in {{1,2}}"
+        );
+    }
+
+    #[test]
     fn enforces_state_limit() {
         let file = parse_source(
             r"
