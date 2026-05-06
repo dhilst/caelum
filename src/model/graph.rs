@@ -792,6 +792,43 @@ mod tests {
     }
 
     #[test]
+    fn two_int_ranges_follower_restricts_reachability() {
+        // Two int range variables: x increments mod 3, y follows x with a 1-step
+        // delay (y' = x). Starting from (x=0, y=0):
+        //   (0,0) -> (1,0) -> (2,1) -> (0,2) -> (1,0) -- cycle
+        //
+        // Full cross-product: 3 * 3 = 9 states. But only 4 are reachable because
+        // the follower pattern y' = x restricts which (x,y) pairs can appear.
+        // Reachable: {(0,0), (1,0), (2,1), (0,2)} = 4 states.
+        let graph = graph(
+            r"
+            let x: 0..2
+            let y: 0..2
+            init { x = 0 ∧ y = 0 }
+            transition step { x' = (x + 1) mod 3 ∧ y' = x }
+            property bounded { □ (x >= 0 ∧ y >= 0) }
+            ",
+        )
+        .expect("graph should build for two int range follower system");
+
+        assert_eq!(graph.variables, vec!["x", "y"]);
+        // Full cross-product is 3 * 3 = 9, but follower restricts to 4
+        assert!(
+            graph.states.len() < 9,
+            "reachable states ({}) should be less than full cross-product (9)",
+            graph.states.len()
+        );
+        assert_eq!(
+            graph.states.len(),
+            4,
+            "exactly 4 states reachable in the follower pattern"
+        );
+        assert_eq!(graph.initial_states.len(), 1);
+        // Deterministic: each state has exactly one successor
+        assert_eq!(graph.edge_count(), 4);
+    }
+
+    #[test]
     fn enforces_state_limit() {
         let file = parse_source(
             r"

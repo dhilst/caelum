@@ -1600,6 +1600,102 @@ mod tests {
     }
 
     #[test]
+    fn two_int_ranges_cross_variable_unicode_properties() {
+        // Two int range variables with Unicode temporal operators.
+        // System: x increments mod 3, y follows x with 1-step delay (y' = x).
+        // Starting from (x=0, y=0):
+        //   (0,0) -> (1,0) -> (2,1) -> (0,2) -> (1,0) -> ...
+        // Reachable: {(0,0), (1,0), (2,1), (0,2)} = 4 states.
+        //
+        // Properties using Unicode operators (□, ◇, ◯, ∧, ¬):
+        //   1. □ (x >= 0 ∧ y >= 0) -- PASSES: all values non-negative
+        //   2. □ (x = 1 -> ◯ (y = 1)) -- PASSES: when x=1 (at state (1,0)),
+        //      next state is (2,1) where y=1; the implication holds.
+        //   3. □ (¬ (x = 2 ∧ y = 2)) -- PASSES: state (2,2) is unreachable
+        //   4. ◇ (x = 2 ∧ y = 1) -- PASSES: state (2,1) is reachable in the cycle
+        //   5. □ (x = 0 -> ◯ (y = 0)) -- PASSES: when x=0, at state (0,0) next is
+        //      (1,0) where y=0; at state (0,2) next is (1,0) where y=0. Both cases y=0.
+        //   6. □ (x = y) -- FAILS: state (1,0) has x=1, y=0
+        //   7. invalid: □ (x = 2 ∧ y = 2) -- PASSES as invalid: property fails
+        //      (state (2,2) unreachable means not all states satisfy it,
+        //      and actually x=2 ∧ y=2 is never true), so invalid expectation met.
+        let report = report(
+            r"
+            let x: 0..2
+            let y: 0..2
+            init { x = 0 ∧ y = 0 }
+            transition step { x' = (x + 1) mod 3 ∧ y' = x }
+            property bounds { □ (x >= 0 ∧ y >= 0) }
+            property x1_implies_next_y1 { □ (x = 1 -> ◯ (y = 1)) }
+            property never_both_two { □ (¬ (x = 2 ∧ y = 2)) }
+            property reaches_2_1 { ◇ (x = 2 ∧ y = 1) }
+            property x0_implies_next_y0 { □ (x = 0 -> ◯ (y = 0)) }
+            property x_equals_y { □ (x = y) }
+            invalid both_two_unreachable { □ (x = 2 ∧ y = 2) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.properties.len(), 7);
+
+        // Property 1: bounds -- always non-negative
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Pass,
+            "□ (x >= 0 ∧ y >= 0) should pass"
+        );
+        assert!(report.properties[0].counterexample.is_none());
+
+        // Property 2: x=1 -> next(y=1) -- cross-variable implication with next
+        assert_eq!(
+            report.properties[1].status,
+            CheckStatus::Pass,
+            "□ (x = 1 → ◯ (y = 1)) should pass: y follows x"
+        );
+        assert!(report.properties[1].counterexample.is_none());
+
+        // Property 3: never both at 2 -- unreachable state exclusion
+        assert_eq!(
+            report.properties[2].status,
+            CheckStatus::Pass,
+            "□ (¬ (x = 2 ∧ y = 2)) should pass: (2,2) unreachable"
+        );
+        assert!(report.properties[2].counterexample.is_none());
+
+        // Property 4: eventually reach (2,1)
+        assert_eq!(
+            report.properties[3].status,
+            CheckStatus::Pass,
+            "◇ (x = 2 ∧ y = 1) should pass: (2,1) is in the cycle"
+        );
+        assert!(report.properties[3].counterexample.is_none());
+
+        // Property 5: x=0 -> next(y=0)
+        assert_eq!(
+            report.properties[4].status,
+            CheckStatus::Pass,
+            "□ (x = 0 → ◯ (y = 0)) should pass: from both (0,0) and (0,2) next has y=0"
+        );
+        assert!(report.properties[4].counterexample.is_none());
+
+        // Property 6: x = y -- fails because (1,0), (2,1), (0,2) have x != y
+        assert_eq!(
+            report.properties[5].status,
+            CheckStatus::Fail,
+            "□ (x = y) should fail: state (1,0) has x != y"
+        );
+        assert!(report.properties[5].counterexample.is_some());
+
+        // Invalid 7: □ (x = 2 ∧ y = 2) -- property fails (as expected), so invalid passes
+        assert_eq!(report.properties[6].kind, PropertyKind::Invalid);
+        assert_eq!(
+            report.properties[6].status,
+            CheckStatus::Pass,
+            "invalid □ (x = 2 ∧ y = 2) should pass: property indeed fails"
+        );
+    }
+
+    #[test]
     fn two_bool_vars_cross_variable_properties_and_invalid() {
         // Two boolean variables: `a` toggles, `b` follows `a` with 1-step delay.
         // Reachable cycle after init: (F,F) -> (T,F) -> (F,T) -> (T,F) -> ...
