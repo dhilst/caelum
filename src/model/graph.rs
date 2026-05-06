@@ -597,6 +597,43 @@ mod tests {
     }
 
     #[test]
+    fn single_value_domain_zero_to_zero() {
+        // Domain 0..0 has exactly one value (0), producing a single state with a self-loop.
+        let graph = graph(
+            r"
+            let x: 0..0
+            init { x = 0 }
+            transition stay { x' = x }
+            property p { □ (x = 0) }
+            ",
+        )
+        .expect("graph should build with 0..0 domain");
+
+        // Exactly 1 state and 1 edge (the self-loop)
+        assert_eq!(graph.states.len(), 1);
+        assert_eq!(graph.edge_count(), 1);
+        // The single edge is a self-loop: state 0 -> state 0
+        assert_eq!(graph.edges[0], vec![0]);
+    }
+
+    #[test]
+    fn single_value_domain_initial_state_correct() {
+        // Verify the single initial state in a 0..0 domain holds value 0.
+        let graph = graph(
+            r"
+            let x: 0..0
+            init { x = 0 }
+            transition stay { x' = x }
+            ",
+        )
+        .expect("graph should build with 0..0 domain");
+
+        assert_eq!(graph.initial_states.len(), 1);
+        let init_idx = graph.initial_states[0];
+        assert_eq!(graph.states[init_idx].values, vec![Value::Int(0)]);
+    }
+
+    #[test]
     fn enforces_state_limit() {
         let file = parse_source(
             r"
