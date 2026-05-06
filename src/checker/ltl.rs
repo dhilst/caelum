@@ -2531,4 +2531,76 @@ mod tests {
         );
         assert!(report.properties[7].counterexample.is_none());
     }
+
+    #[test]
+    fn counter_with_reset_always_eventually_zero_and_max() {
+        // Two-phase reset counter: cnt: 0..4, rst: bool.
+        // increment: cnt < 4 and rst = false => cnt' = cnt + 1, rst' = false
+        // arm_reset: rst = false => cnt' = cnt, rst' = true (non-deterministic arming)
+        // do_reset:  rst = true => cnt' = 0, rst' = false
+        //
+        // `always eventually (cnt = 0)` PASSES because:
+        //   Every infinite path must eventually reach cnt=0. From any unarmed state,
+        //   incrementing eventually reaches cnt=4 where the only option is arm_reset,
+        //   followed by do_reset back to cnt=0. Even paths that arm early still reset
+        //   to cnt=0. There is no cycle that avoids cnt=0 indefinitely.
+        //
+        // `always eventually (cnt = 4)` FAILS because:
+        //   From (0, false) the system can non-deterministically arm immediately:
+        //   (0,false) -> arm -> (0,true) -> reset -> (0,false), looping forever
+        //   at cnt=0 without ever reaching cnt=4.
+        let report = report(
+            r"
+            let cnt: 0..4
+            let rst: bool
+            init { cnt = 0 and rst = false }
+            transition increment {
+                cnt < 4 and rst = false and cnt' = cnt + 1 and rst' = false
+            }
+            transition arm_reset {
+                rst = false and cnt' = cnt and rst' = true
+            }
+            transition do_reset {
+                rst = true and cnt' = 0 and rst' = false
+            }
+            property ae_zero { always eventually (cnt = 0) }
+            property ae_four { always eventually (cnt = 4) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Fail);
+        // always eventually (cnt = 0) passes: reset mechanism guarantees return to zero
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Pass,
+            "always eventually (cnt = 0) should pass: reset guarantees return to zero"
+        );
+        assert!(report.properties[0].counterexample.is_none());
+        // always eventually (cnt = 4) fails: early resets can prevent reaching max
+        assert_eq!(
+            report.properties[1].status,
+            CheckStatus::Fail,
+            "always eventually (cnt = 4) should fail: early arm+reset avoids max"
+        );
+        let cex = report.properties[1]
+            .counterexample
+            .as_ref()
+            .expect("failing always-eventually property should have counterexample");
+        assert!(
+            !cex.states.is_empty(),
+            "counterexample should contain at least one state"
+        );
+        // Every state in the counterexample should have cnt != 4
+        for state in &cex.states {
+            let cnt_val = match &state.values[0] {
+                Value::Int(v) => *v,
+                other => panic!("expected Int for cnt, got {:?}", other),
+            };
+            assert_ne!(
+                cnt_val, 4,
+                "counterexample should never reach cnt = 4"
+            );
+        }
+    }
 }

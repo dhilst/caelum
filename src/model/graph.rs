@@ -2118,4 +2118,96 @@ mod tests {
             "initial state should be (false, false, false) = counter 0"
         );
     }
+
+    #[test]
+    fn counter_with_reset_states_edges_and_reset_connectivity() {
+        // Two-phase reset counter: cnt increments when not armed, arm_reset
+        // non-deterministically arms rst=true (only when rst=false), and
+        // do_reset fires when armed to bring cnt back to 0.
+        //
+        // Variables: cnt: 0..4 (5 values), rst: bool (2 values).
+        // Full cross-product = 10 states, all reachable.
+        //
+        // Edge analysis per state:
+        //   (cnt, false) for cnt < 4: increment->(cnt+1,false), arm_reset->(cnt,true) = 2
+        //   (4, false):               arm_reset->(4,true)                              = 1
+        //   (cnt, true) for all cnt:  do_reset->(0,false)                              = 1
+        // Total edges: 4*2 + 1 + 5*1 = 14
+        let graph = graph(
+            r"
+            let cnt: 0..4
+            let rst: bool
+            init { cnt = 0 and rst = false }
+            transition increment {
+                cnt < 4 and rst = false and cnt' = cnt + 1 and rst' = false
+            }
+            transition arm_reset {
+                rst = false and cnt' = cnt and rst' = true
+            }
+            transition do_reset {
+                rst = true and cnt' = 0 and rst' = false
+            }
+            ",
+        )
+        .expect("graph should build for counter-with-reset system");
+
+        assert_eq!(graph.variables, vec!["cnt", "rst"]);
+        // All 5 * 2 = 10 cross-product states are reachable
+        assert_eq!(
+            graph.states.len(),
+            10,
+            "all cnt x rst combinations should be reachable"
+        );
+        assert_eq!(graph.initial_states.len(), 1);
+        // 14 edges total: 4 states with 2 edges + 1 state with 1 edge + 5 armed states with 1 edge
+        assert_eq!(
+            graph.edge_count(),
+            14,
+            "counter-with-reset should have exactly 14 transition edges"
+        );
+
+        // Verify initial state is (cnt=0, rst=false)
+        let init_idx = graph.initial_states[0];
+        assert_eq!(
+            graph.states[init_idx].values,
+            vec![Value::Int(0), Value::Bool(false)],
+            "initial state should be (cnt=0, rst=false)"
+        );
+
+        // Verify that every armed state (rst=true) transitions back to (0, false).
+        // Find the index of state (cnt=0, rst=false).
+        let zero_false_idx = graph
+            .states
+            .iter()
+            .position(|s| s.values == vec![Value::Int(0), Value::Bool(false)])
+            .expect("state (0, false) should exist");
+        // Every state with rst=true should have exactly one successor: (0, false)
+        for (i, state) in graph.states.iter().enumerate() {
+            if state.values[1] == Value::Bool(true) {
+                assert_eq!(
+                    graph.edges[i].len(),
+                    1,
+                    "armed state {:?} should have exactly one successor",
+                    state.values
+                );
+                assert_eq!(
+                    graph.edges[i][0], zero_false_idx,
+                    "armed state {:?} should reset to (0, false)",
+                    state.values
+                );
+            }
+        }
+
+        // Verify that (4, false) has exactly one successor (must arm, can't increment)
+        let four_false_idx = graph
+            .states
+            .iter()
+            .position(|s| s.values == vec![Value::Int(4), Value::Bool(false)])
+            .expect("state (4, false) should exist");
+        assert_eq!(
+            graph.edges[four_false_idx].len(),
+            1,
+            "at cnt=4, rst=false, increment guard fails so only arm_reset is available"
+        );
+    }
 }
