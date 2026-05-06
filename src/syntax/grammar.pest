@@ -1,0 +1,65 @@
+WHITESPACE = _{ " " | "\t" | NEWLINE | COMMENT }
+COMMENT = _{ line_comment | block_comment }
+
+line_comment = { "//" ~ (!NEWLINE ~ ANY)* }
+block_comment = { "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+
+file = { SOI ~ module_decl? ~ import_decl* ~ item* ~ EOI }
+
+module_decl = { "module" ~ module_name }
+module_name = { ident ~ ("." ~ ident)* }
+
+import_decl = { "import" ~ string_lit }
+
+item = _{ const_decl | var_decl | init_block | transition_block | property_block }
+
+const_decl = { "const" ~ ident ~ "=" ~ expr }
+var_decl = { "let" ~ ident ~ type_sep ~ domain }
+type_sep = _{ ":" | "∈" }
+
+domain = _{ bool_domain | int_range | enum_domain }
+bool_domain = { "bool" }
+int_range = { range_bound ~ ".." ~ range_bound }
+range_bound = _{ int_lit | ident }
+enum_domain = { "enum" ~ "{" ~ ident ~ ("," ~ ident)* ~ ","? ~ "}" }
+
+init_block = { "init" ~ block_expr }
+transition_block = { "transition" ~ ident ~ block_expr }
+property_block = { "property" ~ ident ~ block_expr }
+block_expr = { "{" ~ expr ~ "}" }
+
+expr = _{ equivalence }
+equivalence = { implication ~ (iff_op ~ implication)* }
+implication = { until_expr ~ (implies_op ~ implication)? }
+until_expr = { or_expr ~ (until_op ~ until_expr)? }
+or_expr = { and_expr ~ (or_op ~ and_expr)* }
+and_expr = { comparison ~ (and_op ~ comparison)* }
+comparison = { additive ~ (comp_op ~ additive)? }
+additive = { multiplicative ~ (add_op ~ multiplicative)* }
+multiplicative = { unary ~ (mul_op ~ unary)* }
+unary = { unary_op* ~ primary }
+primary = { literal | primed_ident | ident | "(" ~ expr ~ ")" }
+
+unary_op = { not_op | neg_op | always_op | eventually_op | next_op }
+not_op = { "not" | "~" | "¬" }
+neg_op = { "-" }
+always_op = { "always" | "[]" | "□" }
+eventually_op = { "eventually" | "<>" | "◇" }
+next_op = { "next" | "()" | "◯" }
+
+until_op = { "until" | "U" | "𝒰" }
+or_op = { "or" | "\\/" | "∨" }
+and_op = { "and" | "/\\" | "∧" }
+implies_op = { "->" }
+iff_op = { "<->" }
+add_op = { "+" | "-" }
+mul_op = { "*" | "/" | "mod" }
+comp_op = { "=" | "!=" | "<=" | "<" | ">=" | ">" }
+
+primed_ident = { ident ~ "'" }
+ident = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+int_lit = @{ "-"? ~ ASCII_DIGIT+ }
+literal = { bool_lit | int_lit }
+bool_lit = { "true" | "false" }
+string_lit = @{ "\"" ~ string_char* ~ "\"" }
+string_char = { "\\\"" | "\\\\" | "\\n" | "\\r" | "\\t" | (!"\"" ~ ANY) }
