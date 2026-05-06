@@ -1892,4 +1892,121 @@ mod tests {
 
         assert!(err.to_string().contains("exceeding --max-states"));
     }
+
+    #[test]
+    fn mutual_exclusion_two_enum_vars_unreachable_crit_crit() {
+        // Two symmetric enum process variables modeling mutual exclusion.
+        // Each process: idle -> try -> crit -> idle.
+        // Entry guard prevents both being critical simultaneously.
+        //
+        // Full cross-product: 3 * 3 = 9 states.
+        // Unreachable: (p1_crit, p2_crit) -- the mutual exclusion invariant.
+        // So 8 reachable states.
+        //
+        // Transitions (6 total, one process moves per step):
+        //   p1_request:  p1=idle                    -> p1'=try,  p2'=p2
+        //   p1_enter:    p1=try  and not(p2=crit)   -> p1'=crit, p2'=p2
+        //   p1_release:  p1=crit                    -> p1'=idle, p2'=p2
+        //   p2_request:  p2=idle                    -> p2'=try,  p1'=p1
+        //   p2_enter:    p2=try  and not(p1=crit)   -> p2'=crit, p1'=p1
+        //   p2_release:  p2=crit                    -> p2'=idle, p1'=p1
+        //
+        // Edge count per state:
+        //   (idle,idle): p1_request->(try,idle), p2_request->(idle,try) = 2
+        //   (idle,try):  p1_request->(try,try), p2_enter->(idle,crit) = 2
+        //   (idle,crit): p1_request->(try,crit), p2_release->(idle,idle) = 2
+        //   (try,idle):  p1_enter->(crit,idle), p2_request->(try,try) = 2
+        //   (try,try):   p1_enter->(crit,try), p2_enter->(try,crit) = 2
+        //   (try,crit):  p2_release->(try,idle) = 1 (p1_enter blocked: p2=crit)
+        //   (crit,idle): p1_release->(idle,idle), p2_request->(crit,try) = 2
+        //   (crit,try):  p1_release->(idle,try) = 1 (p2_enter blocked: p1=crit)
+        //
+        // Total edges: 2+2+2+2+2+1+2+1 = 14
+        let graph = graph(
+            r"
+            let p1: enum { p1_idle, p1_try, p1_crit }
+            let p2: enum { p2_idle, p2_try, p2_crit }
+            init { p1 = p1_idle and p2 = p2_idle }
+            transition p1_request {
+                p1 = p1_idle and p1' = p1_try and p2' = p2
+            }
+            transition p1_enter {
+                p1 = p1_try and not (p2 = p2_crit) and p1' = p1_crit and p2' = p2
+            }
+            transition p1_release {
+                p1 = p1_crit and p1' = p1_idle and p2' = p2
+            }
+            transition p2_request {
+                p2 = p2_idle and p2' = p2_try and p1' = p1
+            }
+            transition p2_enter {
+                p2 = p2_try and not (p1 = p1_crit) and p2' = p2_crit and p1' = p1
+            }
+            transition p2_release {
+                p2 = p2_crit and p2' = p2_idle and p1' = p1
+            }
+            property mutex { always not (p1 = p1_crit and p2 = p2_crit) }
+            ",
+        )
+        .expect("graph should build for mutual exclusion protocol");
+
+        assert_eq!(graph.variables, vec!["p1", "p2"]);
+
+        // 3 * 3 = 9 cross-product states, but (crit, crit) is unreachable
+        assert_eq!(
+            graph.states.len(),
+            8,
+            "8 of 9 cross-product states should be reachable (crit,crit excluded)"
+        );
+        assert_eq!(graph.initial_states.len(), 1);
+        assert_eq!(
+            graph.edge_count(),
+            14,
+            "14 edges: 6 states with 2 successors + 2 bottleneck states with 1"
+        );
+
+        // Verify (crit, crit) is NOT in the reachable states
+        let crit_crit_found = graph.states.iter().any(|s| {
+            s.values[0] == Value::Enum("p1_crit".to_string())
+                && s.values[1] == Value::Enum("p2_crit".to_string())
+        });
+        assert!(
+            !crit_crit_found,
+            "(p1_crit, p2_crit) must be unreachable in the mutual exclusion protocol"
+        );
+
+        // Verify the two bottleneck states (try,crit) and (crit,try) have exactly 1 successor
+        let find_state = |p1_val: &str, p2_val: &str| -> usize {
+            graph
+                .states
+                .iter()
+                .position(|s| {
+                    s.values[0] == Value::Enum(p1_val.to_string())
+                        && s.values[1] == Value::Enum(p2_val.to_string())
+                })
+                .unwrap_or_else(|| panic!("state ({}, {}) should be reachable", p1_val, p2_val))
+        };
+
+        let s_try_crit = find_state("p1_try", "p2_crit");
+        assert_eq!(
+            graph.edges[s_try_crit].len(),
+            1,
+            "(try,crit) is a bottleneck: only p2_release is enabled (p1_enter blocked by guard)"
+        );
+
+        let s_crit_try = find_state("p1_crit", "p2_try");
+        assert_eq!(
+            graph.edges[s_crit_try].len(),
+            1,
+            "(crit,try) is a bottleneck: only p1_release is enabled (p2_enter blocked by guard)"
+        );
+
+        // Verify (try,try) has exactly 2 successors: either process can enter critical
+        let s_try_try = find_state("p1_try", "p2_try");
+        assert_eq!(
+            graph.edges[s_try_try].len(),
+            2,
+            "(try,try) should have 2 successors: p1_enter and p2_enter (but not both)"
+        );
+    }
 }

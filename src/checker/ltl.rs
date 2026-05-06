@@ -2237,4 +2237,147 @@ mod tests {
             "counterexample should contain at least one state"
         );
     }
+
+    #[test]
+    fn mutual_exclusion_enum_invariant_starvation_and_invalids() {
+        // Two symmetric enum process variables for mutual exclusion.
+        // Tests LTL properties specific to mutual exclusion:
+        //   P1 (PASS): always not (p1=crit and p2=crit) -- the core mutex invariant
+        //   P2 (PASS): always (p1=crit -> next (p1=idle or p1=crit))
+        //       From crit, p1_release -> idle, or p2 moves and p1 stays crit.
+        //   P3 (PASS): always (p1=try -> next (p1=try or p1=crit))
+        //       A trying process never retreats; it stays trying or advances.
+        //   P4 (FAIL): eventually (p1=crit and p2=crit) -- unreachable, so fails
+        //   P5 (FAIL): always eventually (p1=idle)
+        //       Starvation possible: p1 can stay in p1_try forever while p2 cycles.
+        //       Cycle: (try,try)->(try,crit)->(try,idle)->(try,try)->...
+        //       p1 never leaves p1_try on this path.
+        //   P6 (FAIL): always (p1=try and p2=try -> next (p1=crit and p2=crit))
+        //       Both cannot enter simultaneously; only one enters per step.
+        //   P7 (PASS): always (p1=crit -> p2=idle or p2=try)
+        //       Alternative formulation of mutual exclusion: if p1 is in the
+        //       critical section, p2 must be in idle or trying (never critical).
+        //       This holds because (crit,crit) is unreachable.
+        let report = report(
+            r"
+            let p1: enum { p1_idle, p1_try, p1_crit }
+            let p2: enum { p2_idle, p2_try, p2_crit }
+            init { p1 = p1_idle and p2 = p2_idle }
+            transition p1_request {
+                p1 = p1_idle and p1' = p1_try and p2' = p2
+            }
+            transition p1_enter {
+                p1 = p1_try and not (p2 = p2_crit) and p1' = p1_crit and p2' = p2
+            }
+            transition p1_release {
+                p1 = p1_crit and p1' = p1_idle and p2' = p2
+            }
+            transition p2_request {
+                p2 = p2_idle and p2' = p2_try and p1' = p1
+            }
+            transition p2_enter {
+                p2 = p2_try and not (p1 = p1_crit) and p2' = p2_crit and p1' = p1
+            }
+            transition p2_release {
+                p2 = p2_crit and p2' = p2_idle and p1' = p1
+            }
+            property mutex_invariant {
+                always not (p1 = p1_crit and p2 = p2_crit)
+            }
+            property crit_stays_or_releases {
+                always (p1 = p1_crit -> next (p1 = p1_idle or p1 = p1_crit))
+            }
+            property trying_never_retreats {
+                always (p1 = p1_try -> next (p1 = p1_try or p1 = p1_crit))
+            }
+            property reach_both_crit {
+                eventually (p1 = p1_crit and p2 = p2_crit)
+            }
+            property no_starvation_p1 {
+                always eventually (p1 = p1_idle)
+            }
+            property both_enter_at_once {
+                always (p1 = p1_try and p2 = p2_try -> next (p1 = p1_crit and p2 = p2_crit))
+            }
+            property crit_implies_other_not_crit {
+                always (p1 = p1_crit -> p2 = p2_idle or p2 = p2_try)
+            }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.properties.len(), 7);
+
+        // P1: mutual exclusion invariant -- (crit,crit) is unreachable
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Pass,
+            "always not (p1=crit and p2=crit) should pass: mutual exclusion holds"
+        );
+        assert!(report.properties[0].counterexample.is_none());
+
+        // P2: from critical, process stays critical or releases to idle
+        assert_eq!(
+            report.properties[1].status,
+            CheckStatus::Pass,
+            "always (p1=crit -> next(idle or crit)) should pass"
+        );
+        assert!(report.properties[1].counterexample.is_none());
+
+        // P3: trying process never retreats to idle
+        assert_eq!(
+            report.properties[2].status,
+            CheckStatus::Pass,
+            "always (p1=try -> next(try or crit)) should pass: forward-only protocol"
+        );
+        assert!(report.properties[2].counterexample.is_none());
+
+        // P4: eventually both critical -- fails because (crit,crit) is unreachable
+        assert_eq!(
+            report.properties[3].status,
+            CheckStatus::Fail,
+            "eventually (p1=crit and p2=crit) should fail: unreachable state"
+        );
+        assert!(report.properties[3].counterexample.is_some());
+
+        // P5: starvation freedom fails -- p1 can be stuck in try forever
+        assert_eq!(
+            report.properties[4].status,
+            CheckStatus::Fail,
+            "always eventually (p1=idle) should fail: starvation possible"
+        );
+        let starvation_cex = report.properties[4]
+            .counterexample
+            .as_ref()
+            .expect("starvation failure should have counterexample");
+        assert!(
+            !starvation_cex.states.is_empty(),
+            "starvation counterexample should contain at least one state"
+        );
+        // The counterexample should reach a state where p1 is stuck (try, not idle)
+        let last_p1 = &starvation_cex.states.last().unwrap().values[0];
+        assert_ne!(
+            *last_p1,
+            Value::Enum("p1_idle".to_string()),
+            "starvation counterexample should end at a state where p1 is not idle"
+        );
+
+        // P6: both enter simultaneously from (try,try) -- fails because
+        // only one process enters per step
+        assert_eq!(
+            report.properties[5].status,
+            CheckStatus::Fail,
+            "always (try,try -> next(crit,crit)) should fail: one enters at a time"
+        );
+        assert!(report.properties[5].counterexample.is_some());
+
+        // P7: if p1 is critical, p2 is idle or trying (not critical) -- equivalent
+        // to mutual exclusion expressed as an implication on p2's state
+        assert_eq!(
+            report.properties[6].status,
+            CheckStatus::Pass,
+            "always (p1=crit -> p2=idle or p2=try) should pass: alternative mutex formulation"
+        );
+        assert!(report.properties[6].counterexample.is_none());
+    }
 }
