@@ -30,7 +30,7 @@ property tautology_gt_ge {
   always (x > 0 -> x >= 1)
 }
 
-// FAIL: when x = 0, the antecedent is true but x = 1 is false
-property false_consequent {
+// when x = 0, the antecedent is true but x = 1 is false
+invalid false_consequent {
   always (x = 0 -> x = 1)
 }

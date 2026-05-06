@@ -32,7 +32,7 @@ property next_is_one {
   next (x = 1)
 }
 
-// FAIL: from x = 0 the successor is x = 1, not x = 0
-property next_is_zero {
+// from x = 0 the successor is x = 1, not x = 0
+invalid next_is_zero {
   next (x = 0)
 }

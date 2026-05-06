@@ -28,8 +28,8 @@ property always_valid {
   always (state = idle or state = running or state = done)
 }
 
-// FAIL: state starts idle, moves to running, then reaches done.
+// state starts idle, moves to running, then reaches done.
 // Once state = done, this property is violated.
-property never_done {
+invalid never_done {
   always (state != done)
 }

@@ -36,7 +36,7 @@ property eventually_zero {
   eventually (x = 0)
 }
 
-// FAIL: from x = 0 there is a path (stutter forever) that never reaches x = 3
-property eventually_three {
+// from x = 0 there is a path (stutter forever) that never reaches x = 3
+invalid eventually_three {
   eventually (x = 3)
 }

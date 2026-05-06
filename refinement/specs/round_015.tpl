@@ -38,9 +38,9 @@ property always_eventually_zero {
   always eventually (x = 0)
 }
 
-// FAIL: x starts at 8, and 8 / 4 = 2 (not 0), so x / 4 = 0 does not hold always
+// x starts at 8, and 8 / 4 = 2 (not 0), so x / 4 = 0 does not hold always
 // At x = 8: 8/4 = 2. At x = 4: 4/4 = 1. At x = 2: 2/4 = 0. At x = 1: 1/4 = 0. At x = 0: 0/4 = 0.
 // Fails at x = 8 and x = 4
-property always_div4_zero {
+invalid always_div4_zero {
   always (x / 4 = 0)
 }

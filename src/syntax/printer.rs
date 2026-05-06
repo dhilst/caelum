@@ -87,7 +87,12 @@ impl Printer {
                 out.push_str("\n}\n");
             }
             Item::Property(block) => {
-                out.push_str("property ");
+                let keyword = match block.kind {
+                    PropertyKind::Property => "property",
+                    PropertyKind::Invalid => "invalid",
+                };
+                out.push_str(keyword);
+                out.push(' ');
                 out.push_str(&block.name);
                 out.push_str(" {\n  ");
                 out.push_str(&self.print_expr(&block.expr));

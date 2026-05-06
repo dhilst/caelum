@@ -26,8 +26,8 @@ property paren_double_not_nonneg {
   always (not (not (x >= 0)))
 }
 
-// Single not: x visits 0 on every cycle, so always (not (x = 0)) should FAIL.
-property always_not_zero {
+// Single not: x visits 0 on every cycle, so always (not (x = 0)) is invalid.
+invalid always_not_zero {
   always (not (x = 0))
 }
 

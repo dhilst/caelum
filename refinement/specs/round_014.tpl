@@ -31,7 +31,7 @@ property eventually_even {
   always eventually (x mod 2 = 0)
 }
 
-// FAIL: x mod 2 = 0 does not hold always, since x visits odd values 1,3,5
-property always_even {
+// x mod 2 = 0 does not hold always, since x visits odd values 1,3,5
+invalid always_even {
   always (x mod 2 = 0)
 }

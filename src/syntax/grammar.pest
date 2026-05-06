@@ -11,7 +11,7 @@ module_name = { ident ~ ("." ~ ident)* }
 
 import_decl = { "import" ~ string_lit }
 
-item = _{ const_decl | var_decl | init_block | transition_block | property_block }
+item = _{ const_decl | var_decl | init_block | transition_block | property_block | invalid_block }
 
 const_decl = { "const" ~ ident ~ "=" ~ expr }
 var_decl = { "let" ~ ident ~ type_sep ~ domain }
@@ -26,6 +26,7 @@ enum_domain = { "enum" ~ "{" ~ ident ~ ("," ~ ident)* ~ ","? ~ "}" }
 init_block = { "init" ~ block_expr }
 transition_block = { "transition" ~ ident ~ block_expr }
 property_block = { "property" ~ ident ~ block_expr }
+invalid_block = { "invalid" ~ ident ~ block_expr }
 block_expr = { "{" ~ expr ~ "}" }
 
 expr = _{ equivalence }

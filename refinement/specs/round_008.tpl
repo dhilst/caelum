@@ -74,7 +74,7 @@ property ea_two_pass {
   eventually always (x = 2)
 }
 
-// FAIL: x never stabilizes at 0 (it leaves 0 and never returns)
-property ea_zero_fail {
+// x never stabilizes at 0 (it leaves 0 and never returns)
+invalid ea_zero_fail {
   eventually always (x = 0)
 }

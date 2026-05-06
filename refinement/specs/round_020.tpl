@@ -27,8 +27,7 @@ property next_zero {
   next (x = 0)
 }
 
-// x = 1 is outside domain 0..0, so x is never 1 — should FAIL
-// (or produce a semantic/domain error if the checker rejects out-of-range comparisons)
-property eventually_one {
+// x = 1 is outside domain 0..0, so x is never 1
+invalid eventually_one {
   eventually (x = 1)
 }

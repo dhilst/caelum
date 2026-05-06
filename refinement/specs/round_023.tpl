@@ -44,7 +44,7 @@ property never_four {
   always (x < 4)
 }
 
-// FAIL: x visits 1, 2, 3, 0 — not always 1
-property always_one {
+// x visits 1, 2, 3, 0 — not always 1
+invalid always_one {
   always (x = 1)
 }

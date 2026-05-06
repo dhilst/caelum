@@ -37,7 +37,7 @@ property double_neg_equiv {
   always (b <-> not not b)
 }
 
-// FAIL: b toggles, so it is true in some states
-property always_not_b {
+// b toggles, so it is true in some states
+invalid always_not_b {
   always (not b)
 }

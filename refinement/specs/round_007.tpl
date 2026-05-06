@@ -52,7 +52,7 @@ property always_ev_one {
   always eventually (x = 1)
 }
 
-// FAIL: the stutter at x = 1 allows a trace that never returns to x = 0
-property always_ev_zero {
+// the stutter at x = 1 allows a trace that never returns to x = 0
+invalid always_ev_zero {
   always eventually (x = 0)
 }

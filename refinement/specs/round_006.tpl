@@ -35,7 +35,7 @@ property until_pass {
   (x < 3) until (x = 3)
 }
 
-// FAIL: x = 0 does NOT hold continuously until x = 3
-property until_fail {
+// x = 0 does NOT hold continuously until x = 3
+invalid until_fail {
   (x = 0) until (x = 3)
 }

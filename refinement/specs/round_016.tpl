@@ -16,20 +16,20 @@ transition cycle {
 }
 
 // === Operator: = (equality) ===
-// FAIL: x visits all values 0..4, so x = 0 does not hold always
-property eq_fail {
+// x visits all values 0..4, so x = 0 does not hold always
+invalid eq_fail {
   always (x = 0)
 }
 
 // === Operator: != (not equal) ===
-// FAIL: x visits 3, so x != 3 does not hold always
-property neq_fail {
+// x visits 3, so x != 3 does not hold always
+invalid neq_fail {
   always (x != 3)
 }
 
 // === Operator: < (less than) ===
-// FAIL: x can be 4, so x < 4 does not hold always
-property lt_fail {
+// x can be 4, so x < 4 does not hold always
+invalid lt_fail {
   always (x < 4)
 }
 
@@ -40,8 +40,8 @@ property le_pass {
 }
 
 // === Operator: > (greater than) ===
-// FAIL: x can be 0, so x > 0 does not hold always
-property gt_fail {
+// x can be 0, so x > 0 does not hold always
+invalid gt_fail {
   always (x > 0)
 }
 

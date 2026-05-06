@@ -19,7 +19,7 @@ property always_bool {
   always (flag = true or flag = false)
 }
 
-// FAIL: flag starts false and toggles to true, so it is not always false
-property always_false {
+// flag starts false and toggles to true, so it is not always false
+invalid always_false {
   always (flag = false)
 }

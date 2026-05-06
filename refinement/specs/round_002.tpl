@@ -20,8 +20,8 @@ property always_in_range {
   always (x >= 0 and x <= 3)
 }
 
-// FAIL: x starts at 0, increments to 1, 2, 3, then wraps to 0 again.
+// x starts at 0, increments to 1, 2, 3, then wraps to 0 again.
 // Once x reaches 3, this property is violated.
-property never_three {
+invalid never_three {
   always (x != 3)
 }

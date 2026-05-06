@@ -65,7 +65,7 @@ property response_wraps {
   always (x = 3 -> next (x = 0))
 }
 
-// FAIL: from idle (x=0), the next state is x=1, not x=2
-property idle_skips_processing {
+// from idle (x=0), the next state is x=1, not x=2
+invalid idle_skips_processing {
   always (x = 0 -> next (x = 2))
 }

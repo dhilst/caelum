@@ -10,6 +10,6 @@ transition step {
   x' = (x + 1) mod 3
 }
 
-property never_two {
+invalid never_two {
   □ (x != 2)
 }

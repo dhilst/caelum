@@ -20,8 +20,8 @@ property iff_eq_zero_lt_one {
   always (x = 0 <-> x < 1)
 }
 
-// FAIL: x = 0 iff x = 1 — at x=0 the LHS is true but RHS is false
-property iff_eq_zero_eq_one {
+// x = 0 iff x = 1 — at x=0 the LHS is true but RHS is false
+invalid iff_eq_zero_eq_one {
   always (x = 0 <-> x = 1)
 }
 

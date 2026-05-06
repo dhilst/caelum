@@ -48,8 +48,8 @@ property safe_never_five {
   always (x < 5)
 }
 
-// FAIL: x takes odd values 1 and 3, so x mod 2 = 0 is not always true
-property safe_always_even {
+// x takes odd values 1 and 3, so x mod 2 = 0 is not always true
+invalid safe_always_even {
   always (x mod 2 = 0)
 }
 
@@ -60,8 +60,8 @@ property live_reach_four {
   always eventually (x = 4)
 }
 
-// FAIL: x ranges over 0..4 only, so x = 5 is never reachable
-property live_reach_five {
+// x ranges over 0..4 only, so x = 5 is never reachable
+invalid live_reach_five {
   eventually (x = 5)
 }
 
@@ -72,8 +72,8 @@ property next_is_one {
   next (x = 1)
 }
 
-// FAIL: from initial state x=0, the successor is x=1, not x=3
-property next_is_three {
+// from initial state x=0, the successor is x=1, not x=3
+invalid next_is_three {
   next (x = 3)
 }
 

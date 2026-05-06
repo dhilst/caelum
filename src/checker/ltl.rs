@@ -5,7 +5,7 @@ use serde::Serialize;
 use crate::diagnostics::Result;
 use crate::model::eval::{eval_expr, expect_bool};
 use crate::model::{ModelGraph, State};
-use crate::syntax::{BinaryOp, Expr, Item, PropertyBlock, SourceFile, UnaryOp};
+use crate::syntax::{BinaryOp, Expr, Item, PropertyBlock, PropertyKind, SourceFile, UnaryOp};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CheckReport {
@@ -23,6 +23,7 @@ pub enum CheckStatus {
 #[derive(Debug, Clone, Serialize)]
 pub struct PropertyResult {
     pub name: String,
+    pub kind: PropertyKind,
     pub status: CheckStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub counterexample: Option<Counterexample>,
@@ -46,19 +47,22 @@ pub fn check_properties(file: &SourceFile, graph: &ModelGraph) -> Result<CheckRe
             .copied()
             .find(|state| !sat.contains(state));
 
-        if let Some(initial) = failing_initial {
-            results.push(PropertyResult {
-                name: property.name.clone(),
-                status: CheckStatus::Fail,
-                counterexample: Some(counterexample(initial, &property.expr, graph, &sat)?),
-            });
-        } else {
-            results.push(PropertyResult {
-                name: property.name.clone(),
-                status: CheckStatus::Pass,
-                counterexample: None,
-            });
-        }
+        let (status, counterexample) = match (property.kind, failing_initial) {
+            (PropertyKind::Property, None) => (CheckStatus::Pass, None),
+            (PropertyKind::Property, Some(initial)) => (
+                CheckStatus::Fail,
+                Some(counterexample(initial, &property.expr, graph, &sat)?),
+            ),
+            (PropertyKind::Invalid, Some(_)) => (CheckStatus::Pass, None),
+            (PropertyKind::Invalid, None) => (CheckStatus::Fail, None),
+        };
+
+        results.push(PropertyResult {
+            name: property.name.clone(),
+            kind: property.kind,
+            status,
+            counterexample,
+        });
     }
 
     let status = if results

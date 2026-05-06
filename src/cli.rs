@@ -10,7 +10,7 @@ use crate::diagnostics::{Result, TplError};
 use crate::loader::{load_spec, LoadOptions, LoadedSpec};
 use crate::model::{build_graph_with_options, BuildOptions, ModelGraph};
 use crate::sema::check_source_file;
-use crate::syntax::{parse_source_file, PrintMode, Printer, SourceFile};
+use crate::syntax::{parse_source_file, PrintMode, Printer, PropertyKind, SourceFile};
 
 #[derive(Debug, Parser)]
 #[command(name = "tplgine")]
@@ -227,12 +227,17 @@ fn print_human_report(
     );
 
     for property in &report.properties {
+        let kind_label = match property.kind {
+            PropertyKind::Property => "property",
+            PropertyKind::Invalid => "invalid",
+        };
         println!(
-            "{} property {}",
+            "{} {} {}",
             match property.status {
                 CheckStatus::Pass => "PASS",
                 CheckStatus::Fail => "FAIL",
             },
+            kind_label,
             property.name
         );
 
@@ -273,6 +278,7 @@ fn print_json_report(spec: &LoadedSpec, graph: &ModelGraph, report: &CheckReport
         .map(|property| {
             let mut object = serde_json::Map::new();
             object.insert("name".to_owned(), serde_json::json!(property.name));
+            object.insert("kind".to_owned(), serde_json::json!(property.kind));
             object.insert("status".to_owned(), serde_json::json!(property.status));
             if let Some(counterexample) = &property.counterexample {
                 object.insert(

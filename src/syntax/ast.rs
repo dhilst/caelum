@@ -1,3 +1,5 @@
+use serde::Serialize;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceFile {
     pub module: Option<ModuleName>,
@@ -47,8 +49,16 @@ pub struct TransitionBlock {
     pub expr: Expr,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PropertyKind {
+    Property,
+    Invalid,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PropertyBlock {
+    pub kind: PropertyKind,
     pub name: String,
     pub expr: Expr,
 }

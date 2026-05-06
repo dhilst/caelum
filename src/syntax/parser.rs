@@ -42,6 +42,7 @@ fn parse_file(path: &Path, pair: Pair<'_, Rule>) -> Result<SourceFile> {
                 items.push(Item::Transition(parse_transition_block(child)?));
             }
             Rule::property_block => items.push(Item::Property(parse_property_block(child)?)),
+            Rule::invalid_block => items.push(Item::Property(parse_invalid_block(child)?)),
             Rule::EOI => {}
             rule => {
                 return Err(TplError::Parse {
@@ -134,7 +135,27 @@ fn parse_property_block(pair: Pair<'_, Rule>) -> Result<PropertyBlock> {
         .to_owned();
     let expr = parse_block_expr(inner.next().expect("property must contain block"))?;
 
-    Ok(PropertyBlock { name, expr })
+    Ok(PropertyBlock {
+        kind: PropertyKind::Property,
+        name,
+        expr,
+    })
+}
+
+fn parse_invalid_block(pair: Pair<'_, Rule>) -> Result<PropertyBlock> {
+    let mut inner = pair.into_inner();
+    let name = inner
+        .next()
+        .expect("invalid must contain name")
+        .as_str()
+        .to_owned();
+    let expr = parse_block_expr(inner.next().expect("invalid must contain block"))?;
+
+    Ok(PropertyBlock {
+        kind: PropertyKind::Invalid,
+        name,
+        expr,
+    })
 }
 
 fn parse_block_expr(pair: Pair<'_, Rule>) -> Result<Expr> {
