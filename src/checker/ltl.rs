@@ -559,4 +559,58 @@ mod tests {
             "counterexample should contain at least one state"
         );
     }
+
+    #[test]
+    fn enum_cycle_always_tautology_passes() {
+        let report = report(
+            r"
+            let state: enum { idle, running, done }
+            init { state = idle }
+            transition to_running { state = idle and state' = running }
+            transition to_done { state = running and state' = done }
+            transition to_idle { state = done and state' = idle }
+            property always_valid {
+                always (state = idle or state = running or state = done)
+            }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Pass);
+        assert_eq!(report.properties[0].status, CheckStatus::Pass);
+        assert!(report.properties[0].counterexample.is_none());
+    }
+
+    #[test]
+    fn enum_cycle_always_not_done_fails_with_counterexample() {
+        let report = report(
+            r"
+            let state: enum { idle, running, done }
+            init { state = idle }
+            transition to_running { state = idle and state' = running }
+            transition to_done { state = running and state' = done }
+            transition to_idle { state = done and state' = idle }
+            property never_done { always (state != done) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Fail);
+        assert_eq!(report.properties[0].status, CheckStatus::Fail);
+        let cex = report.properties[0]
+            .counterexample
+            .as_ref()
+            .expect("failing property should have counterexample");
+        // Trace should go idle -> running -> done (3 states)
+        assert_eq!(cex.states.len(), 3);
+        let values: Vec<&str> = cex
+            .states
+            .iter()
+            .map(|s| match &s.values[0] {
+                Value::Enum(v) => v.as_str(),
+                other => panic!("expected Enum, got {:?}", other),
+            })
+            .collect();
+        assert_eq!(values, vec!["idle", "running", "done"]);
+    }
 }
