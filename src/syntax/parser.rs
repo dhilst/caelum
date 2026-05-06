@@ -35,6 +35,7 @@ fn parse_file(path: &Path, pair: Pair<'_, Rule>) -> Result<SourceFile> {
         match child.as_rule() {
             Rule::module_decl => module = Some(parse_module_decl(child)),
             Rule::import_decl => imports.push(parse_import_decl(path, child)?),
+            Rule::type_decl => items.push(Item::TypeDecl(parse_type_decl(child)?)),
             Rule::const_decl => items.push(Item::Const(parse_const_decl(child)?)),
             Rule::var_decl => items.push(Item::Var(parse_var_decl(child)?)),
             Rule::init_block => items.push(Item::Init(parse_init_block(child)?)),
@@ -83,6 +84,17 @@ fn parse_import_decl(path: &Path, pair: Pair<'_, Rule>) -> Result<ImportDecl> {
     Ok(ImportDecl {
         path: unescape_string(path, string.as_str())?,
     })
+}
+
+fn parse_type_decl(pair: Pair<'_, Rule>) -> Result<TypeDecl> {
+    let mut inner = pair.into_inner();
+    let name = inner
+        .next()
+        .expect("type_decl must contain ident")
+        .as_str()
+        .to_owned();
+    let domain = parse_domain(inner.next().expect("type_decl must contain type body"))?;
+    Ok(TypeDecl { name, domain })
 }
 
 fn parse_const_decl(pair: Pair<'_, Rule>) -> Result<ConstDecl> {
@@ -177,6 +189,15 @@ fn parse_domain(pair: Pair<'_, Rule>) -> Result<Domain> {
                 .map(|variant| variant.as_str().to_owned())
                 .collect(),
         }),
+        Rule::named_domain => {
+            let name = pair
+                .into_inner()
+                .next()
+                .expect("named_domain must contain ident")
+                .as_str()
+                .to_owned();
+            Ok(Domain::Named(name))
+        }
         rule => Err(CaelumError::Parse {
             path: PathBuf::from("<memory>"),
             message: format!("unexpected domain rule: {rule:?}"),
@@ -563,5 +584,57 @@ mod tests {
         let ascii_ge = first_property_expr("property p { x >= 1 }");
         let unicode_ge = first_property_expr("property p { x ≥ 1 }");
         assert_eq!(ascii_ge, unicode_ge);
+    }
+
+    #[test]
+    fn parses_type_decl_with_enum() {
+        let file = parse_source("type Color = enum { red, green, yellow }")
+            .expect("type decl should parse");
+
+        let Item::TypeDecl(ref decl) = file.items[0] else {
+            panic!("expected TypeDecl, got {:?}", file.items[0]);
+        };
+        assert_eq!(decl.name, "Color");
+        assert_eq!(
+            decl.domain,
+            Domain::Enum {
+                variants: vec!["red".into(), "green".into(), "yellow".into()]
+            }
+        );
+    }
+
+    #[test]
+    fn parses_type_decl_with_int_range() {
+        let file =
+            parse_source("type Nat = 0..100").expect("type decl with int range should parse");
+
+        let Item::TypeDecl(ref decl) = file.items[0] else {
+            panic!("expected TypeDecl, got {:?}", file.items[0]);
+        };
+        assert_eq!(decl.name, "Nat");
+        assert_eq!(
+            decl.domain,
+            Domain::IntRange {
+                start: DomainBound::Int(0),
+                end: DomainBound::Int(100),
+            }
+        );
+    }
+
+    #[test]
+    fn parses_named_domain_in_var_decl() {
+        let file = parse_source(
+            r"
+            type Color = enum { red, green }
+            let x ∈ Color
+            ",
+        )
+        .expect("named domain should parse");
+
+        let Item::Var(ref decl) = file.items[1] else {
+            panic!("expected Var, got {:?}", file.items[1]);
+        };
+        assert_eq!(decl.name, "x");
+        assert_eq!(decl.domain, Domain::Named("Color".into()));
     }
 }

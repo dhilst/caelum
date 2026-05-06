@@ -58,6 +58,13 @@ impl Printer {
 
     fn print_item(&self, out: &mut String, item: &Item) {
         match item {
+            Item::TypeDecl(decl) => {
+                out.push_str("type ");
+                out.push_str(&decl.name);
+                out.push_str(" = ");
+                out.push_str(&print_domain(&decl.domain));
+                out.push('\n');
+            }
             Item::Const(decl) => {
                 out.push_str("const ");
                 out.push_str(&decl.name);
@@ -254,6 +261,7 @@ fn print_domain(domain: &Domain) -> String {
         Domain::Bool => "bool".to_owned(),
         Domain::IntRange { start, end } => format!("{start}..{end}"),
         Domain::Enum { variants } => format!("enum {{ {} }}", variants.join(", ")),
+        Domain::Named(name) => name.clone(),
     }
 }
 

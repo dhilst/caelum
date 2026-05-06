@@ -19,11 +19,18 @@ pub struct ImportDecl {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Item {
+    TypeDecl(TypeDecl),
     Const(ConstDecl),
     Var(VarDecl),
     Init(InitBlock),
     Transition(TransitionBlock),
     Property(PropertyBlock),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeDecl {
+    pub name: String,
+    pub domain: Domain,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,6 +80,7 @@ pub enum Domain {
     Enum {
         variants: Vec<String>,
     },
+    Named(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

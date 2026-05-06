@@ -11,13 +11,17 @@ module_name = { ident ~ ("." ~ ident)* }
 
 import_decl = { "import" ~ string_lit }
 
-item = _{ const_decl | var_decl | init_block | transition_block | property_block | invalid_block }
+item = _{ type_decl | const_decl | var_decl | init_block | transition_block | property_block | invalid_block }
+
+type_decl = { "type" ~ ident ~ "=" ~ type_body }
+type_body = _{ bool_domain | int_range | enum_domain }
 
 const_decl = { "const" ~ ident ~ "=" ~ expr }
 var_decl = { "let" ~ ident ~ type_sep ~ domain }
 type_sep = _{ ":" | "∈" }
 
-domain = _{ bool_domain | int_range | enum_domain }
+domain = _{ bool_domain | int_range | enum_domain | named_domain }
+named_domain = { ident }
 bool_domain = { "bool" }
 int_range = { range_bound ~ ".." ~ range_bound }
 range_bound = _{ int_lit | ident }

@@ -41,12 +41,23 @@ pub fn build_graph(file: &SourceFile) -> Result<ModelGraph> {
 
 pub fn build_graph_with_options(file: &SourceFile, options: &BuildOptions) -> Result<ModelGraph> {
     let consts = collect_constants(file)?;
+    let types = collect_types(file);
     let mut enum_values = HashMap::new();
     let mut domains = Vec::new();
 
     for item in &file.items {
+        if let Item::TypeDecl(decl) = item {
+            if let Domain::Enum { variants } = &decl.domain {
+                for variant in variants {
+                    enum_values.insert(variant.clone(), Value::Enum(variant.clone()));
+                }
+            }
+        }
+    }
+
+    for item in &file.items {
         if let Item::Var(decl) = item {
-            let values = domain_values(&decl.name, &decl.domain, &consts)?;
+            let values = domain_values(&decl.name, &decl.domain, &consts, &types)?;
             if let Domain::Enum { variants } = &decl.domain {
                 for variant in variants {
                     enum_values.insert(variant.clone(), Value::Enum(variant.clone()));
@@ -260,10 +271,21 @@ fn collect_constants(file: &SourceFile) -> Result<HashMap<String, Value>> {
     Ok(constants)
 }
 
+fn collect_types(file: &SourceFile) -> HashMap<String, Domain> {
+    let mut types = HashMap::new();
+    for item in &file.items {
+        if let Item::TypeDecl(decl) = item {
+            types.insert(decl.name.clone(), decl.domain.clone());
+        }
+    }
+    types
+}
+
 fn domain_values(
     var_name: &str,
     domain: &Domain,
     constants: &HashMap<String, Value>,
+    types: &HashMap<String, Domain>,
 ) -> Result<Vec<Value>> {
     match domain {
         Domain::Bool => Ok(vec![Value::Bool(false), Value::Bool(true)]),
@@ -281,6 +303,12 @@ fn domain_values(
             .iter()
             .map(|variant| Value::Enum(variant.clone()))
             .collect()),
+        Domain::Named(type_name) => {
+            let type_domain = types.get(type_name).ok_or_else(|| CaelumError::Model {
+                message: format!("unknown type `{type_name}` for variable `{var_name}`"),
+            })?;
+            domain_values(var_name, type_domain, constants, types)
+        }
     }
 }
 

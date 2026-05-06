@@ -34,6 +34,7 @@ enum Placement {
 #[derive(Default)]
 struct Checker {
     symbols: HashMap<String, Symbol>,
+    types: HashMap<String, Domain>,
     transitions: HashMap<String, ()>,
     properties: HashMap<String, ()>,
     declarations: HashMap<String, ()>,
@@ -47,6 +48,26 @@ impl Checker {
     fn check(mut self, file: &SourceFile) -> Result<()> {
         for item in &file.items {
             match item {
+                Item::TypeDecl(decl) => {
+                    self.ensure_unused_name(&decl.name)?;
+                    self.check_type_domain(&decl.name, &decl.domain)?;
+                    self.record_declaration(&decl.name);
+                    self.types.insert(decl.name.clone(), decl.domain.clone());
+                    if let Domain::Enum { variants } = &decl.domain {
+                        let ty = Type::Enum(decl.name.clone());
+                        for variant in variants {
+                            self.ensure_unused_name(variant)?;
+                            self.record_declaration(variant);
+                            self.symbols.insert(
+                                variant.clone(),
+                                Symbol {
+                                    ty: ty.clone(),
+                                    kind: SymbolKind::EnumValue,
+                                },
+                            );
+                        }
+                    }
+                }
                 Item::Const(decl) => {
                     self.ensure_unused_name(&decl.name)?;
                     let ty = self.expr_type(&decl.expr, Placement::Const)?;
@@ -136,6 +157,41 @@ impl Checker {
                 } else {
                     Ok(Type::Enum(var_name.to_owned()))
                 }
+            }
+            Domain::Named(type_name) => {
+                let type_domain =
+                    self.types.get(type_name).ok_or_else(|| CaelumError::Semantic {
+                        message: format!(
+                            "unknown type `{type_name}` in declaration of `{var_name}`"
+                        ),
+                    })?;
+                match type_domain {
+                    Domain::Enum { .. } => Ok(Type::Enum(type_name.clone())),
+                    Domain::Bool => Ok(Type::Bool),
+                    Domain::IntRange { .. } => Ok(Type::Int),
+                    Domain::Named(_) => unreachable!(),
+                }
+            }
+        }
+    }
+
+    fn check_type_domain(&self, type_name: &str, domain: &Domain) -> Result<()> {
+        match domain {
+            Domain::Enum { variants } => {
+                if variants.is_empty() {
+                    semantic_error(format!("enum type `{type_name}` has no variants"))
+                } else {
+                    Ok(())
+                }
+            }
+            Domain::IntRange { start, end } => {
+                self.check_int_bound(start)?;
+                self.check_int_bound(end)?;
+                Ok(())
+            }
+            Domain::Bool => Ok(()),
+            Domain::Named(_) => {
+                semantic_error(format!("type `{type_name}` cannot alias another named type"))
             }
         }
     }
@@ -397,5 +453,69 @@ mod tests {
         assert!(err
             .to_string()
             .contains("constant expression cannot refer to state variable `x`"));
+    }
+
+    #[test]
+    fn accepts_named_enum_type_with_shared_variables() {
+        check(
+            r"
+            type Color = enum { red, green, yellow }
+            let a ∈ Color
+            let b ∈ Color
+            init { a = red ∧ b = green }
+            transition swap { a' = b ∧ b' = a }
+            property p { □ (a = red → b = green) }
+            ",
+        )
+        .expect("shared named enum type should typecheck");
+    }
+
+    #[test]
+    fn accepts_named_int_range_type() {
+        check(
+            r"
+            type Small = 0..3
+            let x ∈ Small
+            init { x = 0 }
+            transition inc { x' = x + 1 }
+            property p { □ (x ≤ 3) }
+            ",
+        )
+        .expect("named int range type should typecheck");
+    }
+
+    #[test]
+    fn rejects_unknown_named_type() {
+        let err = check("let x ∈ Undefined").expect_err("spec should fail");
+
+        assert!(err.to_string().contains("unknown type `Undefined`"));
+    }
+
+    #[test]
+    fn rejects_duplicate_type_name() {
+        let err = check(
+            r"
+            type Color = enum { red }
+            type Color = enum { blue }
+            ",
+        )
+        .expect_err("spec should fail");
+
+        assert!(err.to_string().contains("duplicate declaration `Color`"));
+    }
+
+    #[test]
+    fn cross_variable_enum_comparison_typechecks() {
+        check(
+            r"
+            type Color = enum { red, green }
+            let a ∈ Color
+            let b ∈ Color
+            init { a = red ∧ b = red }
+            transition t { a' = a ∧ b' = b }
+            property p { □ (a = b → a = red) }
+            ",
+        )
+        .expect("cross-variable comparison of same named type should typecheck");
     }
 }

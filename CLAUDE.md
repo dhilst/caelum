@@ -4,6 +4,7 @@ LTL model checker.
 
 ## Build & Test
 
+- Cargo lives at `~/.cargo/bin/cargo`; if not in PATH, run `export PATH="$HOME/.cargo/bin:$PATH"` first.
 - `cargo build` — build the project
 - `cargo test` — run all unit tests
 - `cargo run -- <spec.lum>` — check a spec file
