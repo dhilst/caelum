@@ -4,6 +4,168 @@ Tutorial
 This tutorial walks through building a traffic light intersection controller
 step by step, introducing each language feature as it becomes needed.
 
+Before we start writing specifications, let's get familiar with the symbols
+Caelum uses. If you've never worked with formal logic notation, this section
+will get you up to speed.
+
+Notation Primer
+---------------
+
+Caelum specifications use symbols from logic and set theory. Every symbol
+has an ASCII alternative you can type on a regular keyboard — you never need
+to type Unicode by hand.
+
+Logical Connectives
+^^^^^^^^^^^^^^^^^^^
+
+These work like the boolean operators you already know from programming.
+
+**Conjunction** ``∧`` (ASCII: ``/\`` or keyword: ``and``) — logical AND.
+Both sides must be true.
+
+In JavaScript:
+
+.. code-block:: javascript
+
+   // Caelum:  x = 0 ∧ y = 1
+   // means:
+   if (x === 0 && y === 1) { /* ... */ }
+
+**Disjunction** ``∨`` (ASCII: ``\/`` or keyword: ``or``) — logical OR.
+At least one side must be true.
+
+.. code-block:: javascript
+
+   // Caelum:  x = 0 ∨ y = 1
+   // means:
+   if (x === 0 || y === 1) { /* ... */ }
+
+**Negation** ``¬`` (ASCII: ``~`` or keyword: ``not``) — logical NOT.
+Flips true to false and vice versa.
+
+.. code-block:: javascript
+
+   // Caelum:  ¬ (x = 0)
+   // means:
+   if (!(x === 0)) { /* ... */ }
+
+**Implication** ``→`` (ASCII: ``->``) — "if ... then ...".
+``A → B`` means whenever A is true, B must also be true. It is only false
+when A is true and B is false.
+
+.. code-block:: javascript
+
+   // Caelum:  x = 0 → y = 1
+   // means:
+   if (x === 0) {
+     assert(y === 1);
+   }
+
+**Not equal** ``≠`` (ASCII: ``!=``) — same as ``!=`` in most languages.
+
+**Less or equal** ``≤`` (ASCII: ``<=``), **greater or equal** ``≥``
+(ASCII: ``>=``) — same as in most languages.
+
+Set Membership
+^^^^^^^^^^^^^^
+
+**Element of** ``∈`` (ASCII: ``:``).
+In Caelum, ``let x ∈ 0..3`` means "x is a variable whose value is
+an element of the set {0, 1, 2, 3}." You can read it as "x is in 0 to 3."
+The ASCII alternative is a plain colon: ``let x : 0..3``.
+
+Temporal Operators
+^^^^^^^^^^^^^^^^^^
+
+These are specific to model checking — they describe properties that hold
+across *time* (sequences of states), not just a single state.
+
+**Always** ``□`` (ASCII: ``[]`` or keyword: ``always``).
+``□ P`` means P is true in *every* reachable state. Think of it as
+a loop that checks every state your system can ever reach:
+
+.. code-block:: javascript
+
+   // Caelum:  □ (x >= 0)
+   // Conceptually:
+   for (const state of allReachableStates) {
+     assert(state.x >= 0);
+   }
+
+**Eventually** ``◇`` (ASCII: ``<>`` or keyword: ``eventually``).
+``◇ P`` means P becomes true at *some* point in the future. No matter
+where you are, you can always reach a state where P holds:
+
+.. code-block:: javascript
+
+   // Caelum:  ◇ (x = 0)
+   // Conceptually:
+   // Starting from any state, there exists a future state where x === 0
+
+**Always eventually** ``□ ◇`` is a common pattern. ``□ ◇ P`` means P
+keeps happening forever — the system never permanently stops reaching P.
+
+**Next** ``◯`` (ASCII: ``()`` or keyword: ``next``).
+``◯ P`` means P is true in the *next* state (one transition step ahead).
+
+Quick Reference
+^^^^^^^^^^^^^^^
+
+.. list-table::
+   :header-rows: 1
+
+   * - Meaning
+     - Unicode
+     - ASCII
+     - Keyword
+   * - and
+     - ``∧``
+     - ``/\``
+     - ``and``
+   * - or
+     - ``∨``
+     - ``\/``
+     - ``or``
+   * - not
+     - ``¬``
+     - ``~``
+     - ``not``
+   * - implies
+     - ``→``
+     - ``->``
+     -
+   * - always
+     - ``□``
+     - ``[]``
+     - ``always``
+   * - eventually
+     - ``◇``
+     - ``<>``
+     - ``eventually``
+   * - next
+     - ``◯``
+     - ``()``
+     - ``next``
+   * - element of
+     - ``∈``
+     - ``:``
+     -
+   * - not equal
+     - ``≠``
+     - ``!=``
+     -
+   * - less or equal
+     - ``≤``
+     - ``<=``
+     -
+   * - greater or equal
+     - ``≥``
+     - ``>=``
+     -
+
+You can freely mix Unicode and ASCII in the same file. The formatter
+(``caelum fmt``) can convert between styles.
+
 Step 1: A Single Traffic Light
 ------------------------------
 
@@ -22,15 +184,20 @@ Declare a named type so the colours are self-documenting:
    }
 
 ``type Color = enum { ... }`` declares a named set of values.
-Variables declared with ``let light ∈ Color`` can hold any value from that set.
+Variables declared with ``let light ∈ Color`` (read: "light is in Color")
+can hold any value from that set.
 The timer is an integer in the range 0 to 5 (inclusive).
+
+The ``init`` block says the system starts with ``light = red`` **and**
+``timer = 5``. The ``∧`` is just "and" — you could also write
+``light = red and timer = 5``.
 
 Step 2: Adding Transitions
 --------------------------
 
 Transitions describe how the system evolves. Each transition has a guard
 (when it can fire) and an effect (what changes). Primed variables like
-``light'`` refer to the value in the next state:
+``light'`` refer to the value in the *next* state:
 
 .. code-block:: text
 
@@ -50,6 +217,10 @@ Transitions describe how the system evolves. Each transition has a guard
      light = yellow ∧ timer = 0 ∧ light' = red ∧ timer' = 5
    }
 
+Read ``timer > 0 ∧ timer' = timer - 1`` as: "if timer is greater than 0,
+then in the next state timer equals timer minus 1." The ``∧`` chains
+multiple conditions together (just like ``&&`` in JavaScript).
+
 The ``tick`` transition counts the timer down while keeping the light colour.
 The other transitions fire when the timer expires, changing colour and
 resetting the timer. Yellow gets a shorter timer (2 instead of 5).
@@ -58,7 +229,7 @@ Step 3: Safety Properties
 -------------------------
 
 Safety properties assert that something bad *never* happens.
-The ``□`` (always) operator means "in every reachable state":
+The ``□`` ("always") operator means "in every reachable state":
 
 .. code-block:: text
 
@@ -66,19 +237,28 @@ The ``□`` (always) operator means "in every reachable state":
      □ (timer ≥ 0 ∧ timer ≤ 5)
    }
 
+Read this as: "it is **always** the case that timer is between 0 and 5."
+You could write it with ASCII as ``[] (timer >= 0 /\ timer <= 5)``
+or with keywords as ``always (timer >= 0 and timer <= 5)``.
+
+The implication operator ``→`` ("if ... then") is useful for conditional
+safety properties:
+
+.. code-block:: text
+
    property yellow_is_short {
      □ (light = yellow → timer ≤ 2)
    }
 
-``timer_bounded`` checks the timer never leaves its range.
-``yellow_is_short`` checks that whenever the light is yellow, the timer
-is at most 2 — ensuring yellow phases are always short.
+Read this as: "it is always the case that **if** the light is yellow,
+**then** the timer is at most 2." This ensures yellow phases are always short.
 
 Step 4: Liveness Properties
 ---------------------------
 
 Liveness properties assert that something good *eventually* happens.
-The ``□ ◇`` (always eventually) pattern means "this keeps happening forever":
+The ``□ ◇`` ("always eventually") pattern means "this keeps happening
+forever":
 
 .. code-block:: text
 
@@ -86,14 +266,16 @@ The ``□ ◇`` (always eventually) pattern means "this keeps happening forever"
      □ ◇ (light = red)
    }
 
-This says the light always eventually returns to red — it never gets stuck.
+Read this as: "it is **always** the case that the light **eventually**
+becomes red." In other words, the light never gets permanently stuck —
+no matter what state you're in, red will come around again.
 
 Step 5: Two Lights at an Intersection
 --------------------------------------
 
-Now the payoff of named types: declare two variables with the same ``Color`` type.
-Both ``traf1`` and ``traf2`` share the same enum variants (``red``, ``green``,
-``yellow``):
+Now the payoff of named types: declare two variables with the same ``Color``
+type. Both ``traf1`` and ``traf2`` share the same enum variants (``red``,
+``green``, ``yellow``):
 
 .. code-block:: text
 
@@ -146,17 +328,25 @@ The critical safety property: both lights must never be green at the same time.
      □ ¬ (traf1 = green ∧ traf2 = green)
    }
 
+Read this as: "it is **always** the case that it is **not** true that both
+traf1 and traf2 are green." Or more naturally: "both lights are never green
+at the same time."
+
+.. code-block:: text
+
    property one_moving_at_most {
      □ (traf1 ≠ red → traf2 = red)
    }
 
-``mutual_exclusion`` directly forbids both-green.
-``one_moving_at_most`` is stronger: if one light is not red, the other must be.
+``one_moving_at_most`` is stronger: "if traf1 is **not equal** to red,
+**then** traf2 must be red." In other words, at most one light can be
+non-red at any time.
 
 Step 7: Fairness Properties
 ----------------------------
 
-Fairness ensures both directions get a turn:
+Fairness ensures both directions get a turn. The ``→`` combined with ``◇``
+lets us say "if this happens, then that will eventually happen":
 
 .. code-block:: text
 
@@ -168,7 +358,9 @@ Fairness ensures both directions get a turn:
      □ (traf2 = green → ◇ (traf1 = green))
    }
 
-After one light is green, the other eventually gets green too.
+Read the first one as: "it is **always** the case that **if** traf1 is green,
+**then eventually** traf2 will be green too." This guarantees neither
+direction is starved.
 
 Step 8: Invalid Properties
 --------------------------
@@ -183,7 +375,7 @@ unexpectedly holds:
      ◇ (traf1 = green ∧ traf2 = green)
    }
 
-This claims both lights are eventually green simultaneously. Since the
+This claims "**eventually** both lights are green simultaneously." Since the
 system prevents that, the property fails — and Caelum reports PASS.
 
 Running the Full Specification
