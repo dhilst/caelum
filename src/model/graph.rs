@@ -993,6 +993,132 @@ mod tests {
     }
 
     #[test]
+    fn three_named_transitions_nondet_branching_edge_count() {
+        // Counter 0..3 with three named transitions (inc/dec/reset) using Unicode
+        // syntax. This creates non-deterministic branching: each state may have up
+        // to 3 successors (one per matching transition).
+        //
+        // inc:   x' = x + 1, guarded by x < 3
+        // dec:   x' = x - 1, guarded by x > 0
+        // reset: x' = 0
+        //
+        // Successor analysis per state:
+        //   x=0: inc->1, reset->0 (dec guard fails)       = 2 successors {0, 1}
+        //   x=1: inc->2, dec->0, reset->0                  = 2 distinct {0, 2}
+        //   x=2: inc->3, dec->1, reset->0                  = 3 distinct {0, 1, 3}
+        //   x=3: dec->2, reset->0 (inc guard fails)        = 2 distinct {0, 2}
+        //
+        // Wait -- the engine iterates all candidate states and checks if ANY
+        // transition matches (current, candidate). So for x=0, candidate=0:
+        //   inc: 0'=0+1=1, not 0 => no; dec: 0>0 false => no; reset: 0'=0 => yes.
+        //   => 0->0 is an edge.
+        // For x=1, candidate=0:
+        //   inc: 1'=1+1=2, not 0 => no; dec: 1>0 and 0=1-1=0 => yes.
+        //   => 1->0 is an edge (from dec). Also reset gives 0, but already matched.
+        //
+        // Total: 4 states, each reachable from init x=0 via inc chain.
+        // Edges: x=0->{0,1}(2), x=1->{0,2}(2), x=2->{0,1,3}(3), x=3->{0,2}(2) => 9?
+        // Let me recount carefully:
+        //   x=0: candidates matching: 0 (reset), 1 (inc) => 2 edges
+        //   x=1: candidates matching: 0 (dec or reset), 2 (inc) => 2 edges
+        //   x=2: candidates matching: 0 (reset), 1 (dec), 3 (inc) => 3 edges
+        //   x=3: candidates matching: 0 (reset), 2 (dec) => 2 edges
+        // Total edges: 2 + 2 + 3 + 2 = 9
+        //
+        // But wait -- for x=1, candidate=1: reset gives 0 not 1, inc gives 2 not 1,
+        // dec gives 0 not 1. So 1 is not a successor of 1. Correct.
+        let graph = graph(
+            r"
+            let x: 0..3
+            init { x = 0 }
+            transition inc { x < 3 ∧ x' = x + 1 }
+            transition dec { x > 0 ∧ x' = x - 1 }
+            transition reset { x' = 0 }
+            property p { □ (x >= 0) }
+            ",
+        )
+        .expect("graph should build for 3-transition non-deterministic counter");
+
+        assert_eq!(graph.states.len(), 4, "all 4 counter values 0..3 reachable");
+        assert_eq!(graph.initial_states.len(), 1);
+        // Non-deterministic: total edges reflect branching from 3 transitions
+        // x=0: 2, x=1: 2, x=2: 3, x=3: 2 => 9 total edges
+        assert_eq!(
+            graph.edge_count(),
+            9,
+            "3 named transitions on 4 states produce 9 edges via non-deterministic branching"
+        );
+        // Verify per-state successor counts to confirm branching structure
+        // Find state indices by value
+        let idx = |val: i64| -> usize {
+            graph
+                .states
+                .iter()
+                .position(|s| s.values == vec![Value::Int(val)])
+                .unwrap()
+        };
+        assert_eq!(graph.edges[idx(0)].len(), 2, "x=0 has 2 successors (inc, reset-self)");
+        assert_eq!(graph.edges[idx(1)].len(), 2, "x=1 has 2 successors");
+        assert_eq!(graph.edges[idx(2)].len(), 3, "x=2 has 3 successors (max branching)");
+        assert_eq!(graph.edges[idx(3)].len(), 2, "x=3 has 2 successors");
+    }
+
+    #[test]
+    fn overlapping_guards_multiple_successors_per_state() {
+        // Four transitions with deliberately overlapping guards on counter 0..2.
+        // This tests that when multiple transition guards are satisfiable for the
+        // same (current, next) pair, the state still appears only once as a
+        // successor (disjunction deduplicates via candidate iteration).
+        //
+        // Transitions:
+        //   inc:   x' = x + 1, guarded by x < 2
+        //   stay:  x' = x     (always enabled -- overlaps with others)
+        //   wrap:  x' = 0     (always enabled -- overlaps with reset-like behavior)
+        //   jump2: x' = 2     (always enabled -- jump to max)
+        //
+        // For x=0, stay gives 0, wrap gives 0, jump2 gives 2, inc gives 1.
+        //   Candidates: 0 (stay OR wrap), 1 (inc), 2 (jump2) => 3 distinct successors
+        // For x=1, stay gives 1, wrap gives 0, jump2 gives 2, inc gives 2.
+        //   Candidates: 0 (wrap), 1 (stay), 2 (inc OR jump2) => 3 distinct successors
+        // For x=2, stay gives 2, wrap gives 0, jump2 gives 2, inc guard fails.
+        //   Candidates: 0 (wrap), 2 (stay OR jump2) => 2 distinct successors
+        //
+        // Total: 3 states, edges: 3 + 3 + 2 = 8
+        let graph = graph(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition inc   { x < 2 ∧ x' = x + 1 }
+            transition stay  { x' = x }
+            transition wrap  { x' = 0 }
+            transition jump2 { x' = 2 }
+            property p { □ (x >= 0 ∧ x <= 2) }
+            ",
+        )
+        .expect("graph should build for overlapping-guard transitions");
+
+        assert_eq!(graph.states.len(), 3, "all 3 counter values 0..2 reachable");
+        assert_eq!(graph.initial_states.len(), 1);
+        // Despite 4 transitions, overlapping guards mean successors are deduplicated
+        assert_eq!(
+            graph.edge_count(),
+            8,
+            "4 overlapping transitions on 3 states produce 8 edges"
+        );
+        // Verify per-state successor counts
+        let idx = |val: i64| -> usize {
+            graph
+                .states
+                .iter()
+                .position(|s| s.values == vec![Value::Int(val)])
+                .unwrap()
+        };
+        assert_eq!(graph.edges[idx(0)].len(), 3, "x=0: {{0,1,2}} via stay/wrap, inc, jump2");
+        assert_eq!(graph.edges[idx(1)].len(), 3, "x=1: {{0,1,2}} via wrap, stay, inc/jump2");
+        assert_eq!(graph.edges[idx(2)].len(), 2, "x=2: {{0,2}} via wrap, stay/jump2 (inc guard fails)");
+    }
+
+    #[test]
     fn enforces_state_limit() {
         let file = parse_source(
             r"
