@@ -1630,6 +1630,142 @@ mod tests {
     }
 
     #[test]
+    fn larger_domain_full_cross_product_reachable() {
+        // Two 0..5 variables with independent nondeterministic cycling.
+        // advance_x increments x mod 6, frames y.
+        // advance_y increments y mod 6, frames x.
+        //
+        // From (0,0), advance_x reaches (1,0), then (2,0), ..., (5,0), (0,0).
+        // From any (k,0), advance_y reaches (k,1), (k,2), ..., (k,5).
+        // So all 6*6 = 36 cross-product states are reachable.
+        //
+        // Each state has exactly 2 distinct successors (advance_x and advance_y)
+        // unless the two successors coincide (which doesn't happen here since
+        // incrementing x vs y from any state yields different pairs).
+        // Total edges: 36 * 2 = 72.
+        let graph = graph(
+            r"
+            let x: 0..5
+            let y: 0..5
+            init { x = 0 and y = 0 }
+            transition advance_x { x' = (x + 1) mod 6 and y' = y }
+            transition advance_y { x' = x and y' = (y + 1) mod 6 }
+            property p { [](x >= 0 and y >= 0) }
+            ",
+        )
+        .expect("graph should build for two 0..5 variables with independent cycling");
+
+        assert_eq!(graph.variables, vec!["x", "y"]);
+        // Full cross-product: 6 * 6 = 36 states, all reachable
+        assert_eq!(
+            graph.states.len(),
+            36,
+            "all 36 cross-product states should be reachable via independent cycling"
+        );
+        assert_eq!(graph.initial_states.len(), 1);
+        // Each state has 2 distinct successors (advance_x, advance_y)
+        assert_eq!(
+            graph.edge_count(),
+            72,
+            "36 states * 2 successors each = 72 edges"
+        );
+        // Verify every (x,y) pair for x,y in 0..5 is present in reachable states
+        let reachable: std::collections::HashSet<(i64, i64)> = graph
+            .states
+            .iter()
+            .map(|s| {
+                if let (Value::Int(x), Value::Int(y)) = (&s.values[0], &s.values[1]) {
+                    (*x, *y)
+                } else {
+                    panic!("expected int values")
+                }
+            })
+            .collect();
+        for x in 0..6 {
+            for y in 0..6 {
+                assert!(
+                    reachable.contains(&(x, y)),
+                    "state ({x},{y}) should be reachable"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn cross_variable_modular_arithmetic_in_transitions() {
+        // Two 0..5 variables where x uses cross-variable arithmetic:
+        //   x' = (x + y) mod 6
+        //   y' = (y + 1) mod 6
+        //
+        // y cycles independently: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 0.
+        // x depends on y via the cross-variable sum.
+        //
+        // Starting from (x=0, y=0):
+        //   (0,0): x'=(0+0)%6=0, y'=(0+1)%6=1 => (0,1)
+        //   (0,1): x'=(0+1)%6=1, y'=(1+1)%6=2 => (1,2)
+        //   (1,2): x'=(1+2)%6=3, y'=(2+1)%6=3 => (3,3)
+        //   (3,3): x'=(3+3)%6=0, y'=(3+1)%6=4 => (0,4)
+        //   (0,4): x'=(0+4)%6=4, y'=(4+1)%6=5 => (4,5)
+        //   (4,5): x'=(4+5)%6=3, y'=(5+1)%6=0 => (3,0)
+        //   (3,0): x'=(3+0)%6=3, y'=(0+1)%6=1 => (3,1)
+        //   (3,1): x'=(3+1)%6=4, y'=(1+1)%6=2 => (4,2)
+        //   (4,2): x'=(4+2)%6=0, y'=(2+1)%6=3 => (0,3)
+        //   (0,3): x'=(0+3)%6=3, y'=(3+1)%6=4 => (3,4)
+        //   (3,4): x'=(3+4)%6=1, y'=(4+1)%6=5 => (1,5)
+        //   (1,5): x'=(1+5)%6=0, y'=(5+1)%6=0 => (0,0) -- back to start!
+        //
+        // Cycle length: 12 states. Not all 36 cross-product states are reachable.
+        // Reachable: (0,0),(0,1),(1,2),(3,3),(0,4),(4,5),(3,0),(3,1),(4,2),(0,3),(3,4),(1,5)
+        let graph = graph(
+            r"
+            let x: 0..5
+            let y: 0..5
+            init { x = 0 and y = 0 }
+            transition step { x' = (x + y) mod 6 and y' = (y + 1) mod 6 }
+            property p { [](x >= 0 and y >= 0) }
+            ",
+        )
+        .expect("graph should build for cross-variable modular arithmetic");
+
+        assert_eq!(graph.variables, vec!["x", "y"]);
+        // Only 12 of 36 cross-product states are reachable
+        assert_eq!(
+            graph.states.len(),
+            12,
+            "cross-variable arithmetic restricts reachable states to 12 of 36"
+        );
+        assert_eq!(graph.initial_states.len(), 1);
+        // Deterministic: each state has exactly one successor
+        assert_eq!(
+            graph.edge_count(),
+            12,
+            "deterministic cycle: 12 states, 12 edges"
+        );
+        // Verify the expected reachable set
+        let expected: std::collections::HashSet<(i64, i64)> = [
+            (0, 0), (0, 1), (1, 2), (3, 3), (0, 4), (4, 5),
+            (3, 0), (3, 1), (4, 2), (0, 3), (3, 4), (1, 5),
+        ]
+        .into_iter()
+        .collect();
+        let actual: std::collections::HashSet<(i64, i64)> = graph
+            .states
+            .iter()
+            .map(|s| {
+                if let (Value::Int(x), Value::Int(y)) = (&s.values[0], &s.values[1]) {
+                    (*x, *y)
+                } else {
+                    panic!("expected int values")
+                }
+            })
+            .collect();
+        assert_eq!(
+            actual, expected,
+            "reachable states should match the traced cycle"
+        );
+    }
+
+    #[test]
     fn enforces_state_limit() {
         let file = parse_source(
             r"
