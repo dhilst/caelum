@@ -615,6 +615,49 @@ mod tests {
     }
 
     #[test]
+    fn next_deterministic_counter_passes() {
+        // From x=0, the only successor is x=1, so next(x=1) holds.
+        let report = report(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 3 }
+            property next_is_one { ◯ (x = 1) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Pass);
+        assert_eq!(report.properties[0].status, CheckStatus::Pass);
+        assert!(report.properties[0].counterexample.is_none());
+    }
+
+    #[test]
+    fn next_deterministic_counter_fails_with_counterexample() {
+        // From x=0, successor is x=1, so next(x=0) should fail.
+        let report = report(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 3 }
+            property next_is_zero { ◯ (x = 0) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Fail);
+        assert_eq!(report.properties[0].status, CheckStatus::Fail);
+        let cex = report.properties[0]
+            .counterexample
+            .as_ref()
+            .expect("failing next property should have counterexample");
+        assert!(
+            !cex.states.is_empty(),
+            "counterexample should contain at least one state"
+        );
+    }
+
+    #[test]
     fn eventually_passes_when_initial_state_satisfies() {
         let report = report(
             r"
