@@ -239,6 +239,161 @@
 <h1>Tutorial<a class="headerlink" href="#tutorial" title="Link to this heading">¶</a></h1>
 <p>This tutorial walks through building a traffic light intersection controller
 step by step, introducing each language feature as it becomes needed.</p>
+<p>Before we start writing specifications, let’s get familiar with the symbols
+Caelum uses. If you’ve never worked with formal logic notation, this section
+will get you up to speed.</p>
+<section id="notation-primer">
+<h2>Notation Primer<a class="headerlink" href="#notation-primer" title="Link to this heading">¶</a></h2>
+<p>Caelum specifications use symbols from logic and set theory. Every symbol
+has an ASCII alternative you can type on a regular keyboard — you never need
+to type Unicode by hand.</p>
+<section id="logical-connectives">
+<h3>Logical Connectives<a class="headerlink" href="#logical-connectives" title="Link to this heading">¶</a></h3>
+<p>These work like the boolean operators you already know from programming.</p>
+<p><strong>Conjunction</strong> <code class="docutils literal notranslate"><span class="pre">∧</span></code> (ASCII: <code class="docutils literal notranslate"><span class="pre">/\</span></code> or keyword: <code class="docutils literal notranslate"><span class="pre">and</span></code>) — logical AND.
+Both sides must be true.</p>
+<p>In JavaScript:</p>
+<div class="highlight-javascript notranslate"><div class="highlight"><pre><span></span><span class="c1">// Caelum:  x = 0 ∧ y = 1</span>
+<span class="c1">// means:</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">x</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="mf">0</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">y</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="mf">1</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Disjunction</strong> <code class="docutils literal notranslate"><span class="pre">∨</span></code> (ASCII: <code class="docutils literal notranslate"><span class="pre">\/</span></code> or keyword: <code class="docutils literal notranslate"><span class="pre">or</span></code>) — logical OR.
+At least one side must be true.</p>
+<div class="highlight-javascript notranslate"><div class="highlight"><pre><span></span><span class="c1">// Caelum:  x = 0 ∨ y = 1</span>
+<span class="c1">// means:</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">x</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="mf">0</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">y</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="mf">1</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Negation</strong> <code class="docutils literal notranslate"><span class="pre">¬</span></code> (ASCII: <code class="docutils literal notranslate"><span class="pre">~</span></code> or keyword: <code class="docutils literal notranslate"><span class="pre">not</span></code>) — logical NOT.
+Flips true to false and vice versa.</p>
+<div class="highlight-javascript notranslate"><div class="highlight"><pre><span></span><span class="c1">// Caelum:  ¬ (x = 0)</span>
+<span class="c1">// means:</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="p">(</span><span class="nx">x</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="mf">0</span><span class="p">))</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Implication</strong> <code class="docutils literal notranslate"><span class="pre">→</span></code> (ASCII: <code class="docutils literal notranslate"><span class="pre">-&gt;</span></code>) — “if … then …”.
+<code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">→</span> <span class="pre">B</span></code> means whenever A is true, B must also be true. It is only false
+when A is true and B is false.</p>
+<div class="highlight-javascript notranslate"><div class="highlight"><pre><span></span><span class="c1">// Caelum:  x = 0 → y = 1</span>
+<span class="c1">// means:</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">x</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="mf">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">assert</span><span class="p">(</span><span class="nx">y</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="mf">1</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Not equal</strong> <code class="docutils literal notranslate"><span class="pre">≠</span></code> (ASCII: <code class="docutils literal notranslate"><span class="pre">!=</span></code>) — same as <code class="docutils literal notranslate"><span class="pre">!=</span></code> in most languages.</p>
+<p><strong>Less or equal</strong> <code class="docutils literal notranslate"><span class="pre">≤</span></code> (ASCII: <code class="docutils literal notranslate"><span class="pre">&lt;=</span></code>), <strong>greater or equal</strong> <code class="docutils literal notranslate"><span class="pre">≥</span></code>
+(ASCII: <code class="docutils literal notranslate"><span class="pre">&gt;=</span></code>) — same as in most languages.</p>
+</section>
+<section id="set-membership">
+<h3>Set Membership<a class="headerlink" href="#set-membership" title="Link to this heading">¶</a></h3>
+<p><strong>Element of</strong> <code class="docutils literal notranslate"><span class="pre">∈</span></code> (ASCII: <code class="docutils literal notranslate"><span class="pre">:</span></code>).
+In Caelum, <code class="docutils literal notranslate"><span class="pre">let</span> <span class="pre">x</span> <span class="pre">∈</span> <span class="pre">0..3</span></code> means “x is a variable whose value is
+an element of the set {0, 1, 2, 3}.” You can read it as “x is in 0 to 3.”
+The ASCII alternative is a plain colon: <code class="docutils literal notranslate"><span class="pre">let</span> <span class="pre">x</span> <span class="pre">:</span> <span class="pre">0..3</span></code>.</p>
+</section>
+<section id="temporal-operators">
+<h3>Temporal Operators<a class="headerlink" href="#temporal-operators" title="Link to this heading">¶</a></h3>
+<p>These are specific to model checking — they describe properties that hold
+across <em>time</em> (sequences of states), not just a single state.</p>
+<p><strong>Always</strong> <code class="docutils literal notranslate"><span class="pre">□</span></code> (ASCII: <code class="docutils literal notranslate"><span class="pre">[]</span></code> or keyword: <code class="docutils literal notranslate"><span class="pre">always</span></code>).
+<code class="docutils literal notranslate"><span class="pre">□</span> <span class="pre">P</span></code> means P is true in <em>every</em> reachable state. Think of it as
+a loop that checks every state your system can ever reach:</p>
+<div class="highlight-javascript notranslate"><div class="highlight"><pre><span></span><span class="c1">// Caelum:  □ (x &gt;= 0)</span>
+<span class="c1">// Conceptually:</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">state</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nx">allReachableStates</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">assert</span><span class="p">(</span><span class="nx">state</span><span class="p">.</span><span class="nx">x</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mf">0</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Eventually</strong> <code class="docutils literal notranslate"><span class="pre">◇</span></code> (ASCII: <code class="docutils literal notranslate"><span class="pre">&lt;&gt;</span></code> or keyword: <code class="docutils literal notranslate"><span class="pre">eventually</span></code>).
+<code class="docutils literal notranslate"><span class="pre">◇</span> <span class="pre">P</span></code> means P becomes true at <em>some</em> point in the future. No matter
+where you are, you can always reach a state where P holds:</p>
+<div class="highlight-javascript notranslate"><div class="highlight"><pre><span></span><span class="c1">// Caelum:  ◇ (x = 0)</span>
+<span class="c1">// Conceptually:</span>
+<span class="c1">// Starting from any state, there exists a future state where x === 0</span>
+</pre></div>
+</div>
+<p><strong>Always eventually</strong> <code class="docutils literal notranslate"><span class="pre">□</span> <span class="pre">◇</span></code> is a common pattern. <code class="docutils literal notranslate"><span class="pre">□</span> <span class="pre">◇</span> <span class="pre">P</span></code> means P
+keeps happening forever — the system never permanently stops reaching P.</p>
+<p><strong>Next</strong> <code class="docutils literal notranslate"><span class="pre">◯</span></code> (ASCII: <code class="docutils literal notranslate"><span class="pre">()</span></code> or keyword: <code class="docutils literal notranslate"><span class="pre">next</span></code>).
+<code class="docutils literal notranslate"><span class="pre">◯</span> <span class="pre">P</span></code> means P is true in the <em>next</em> state (one transition step ahead).</p>
+</section>
+<section id="quick-reference">
+<h3>Quick Reference<a class="headerlink" href="#quick-reference" title="Link to this heading">¶</a></h3>
+<div class="table-wrapper docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Meaning</p></th>
+<th class="head"><p>Unicode</p></th>
+<th class="head"><p>ASCII</p></th>
+<th class="head"><p>Keyword</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>and</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">∧</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/\</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">and</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>or</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">∨</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">\/</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">or</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>not</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">¬</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">~</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">not</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>implies</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">→</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">-&gt;</span></code></p></td>
+<td></td>
+</tr>
+<tr class="row-even"><td><p>always</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">□</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[]</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">always</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>eventually</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">◇</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&lt;&gt;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">eventually</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>next</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">◯</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">()</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">next</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>element of</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">∈</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">:</span></code></p></td>
+<td></td>
+</tr>
+<tr class="row-even"><td><p>not equal</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">≠</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">!=</span></code></p></td>
+<td></td>
+</tr>
+<tr class="row-odd"><td><p>less or equal</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">≤</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&lt;=</span></code></p></td>
+<td></td>
+</tr>
+<tr class="row-even"><td><p>greater or equal</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">≥</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&gt;=</span></code></p></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>You can freely mix Unicode and ASCII in the same file. The formatter
+(<code class="docutils literal notranslate"><span class="pre">caelum</span> <span class="pre">fmt</span></code>) can convert between styles.</p>
+</section>
+</section>
 <section id="step-1-a-single-traffic-light">
 <h2>Step 1: A Single Traffic Light<a class="headerlink" href="#step-1-a-single-traffic-light" title="Link to this heading">¶</a></h2>
 <p>Start with one traffic light that cycles through red, green, and yellow.
@@ -254,14 +409,18 @@ init {
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">type</span> <span class="pre">Color</span> <span class="pre">=</span> <span class="pre">enum</span> <span class="pre">{</span> <span class="pre">...</span> <span class="pre">}</span></code> declares a named set of values.
-Variables declared with <code class="docutils literal notranslate"><span class="pre">let</span> <span class="pre">light</span> <span class="pre">∈</span> <span class="pre">Color</span></code> can hold any value from that set.
+Variables declared with <code class="docutils literal notranslate"><span class="pre">let</span> <span class="pre">light</span> <span class="pre">∈</span> <span class="pre">Color</span></code> (read: “light is in Color”)
+can hold any value from that set.
 The timer is an integer in the range 0 to 5 (inclusive).</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">init</span></code> block says the system starts with <code class="docutils literal notranslate"><span class="pre">light</span> <span class="pre">=</span> <span class="pre">red</span></code> <strong>and</strong>
+<code class="docutils literal notranslate"><span class="pre">timer</span> <span class="pre">=</span> <span class="pre">5</span></code>. The <code class="docutils literal notranslate"><span class="pre">∧</span></code> is just “and” — you could also write
+<code class="docutils literal notranslate"><span class="pre">light</span> <span class="pre">=</span> <span class="pre">red</span> <span class="pre">and</span> <span class="pre">timer</span> <span class="pre">=</span> <span class="pre">5</span></code>.</p>
 </section>
 <section id="step-2-adding-transitions">
 <h2>Step 2: Adding Transitions<a class="headerlink" href="#step-2-adding-transitions" title="Link to this heading">¶</a></h2>
 <p>Transitions describe how the system evolves. Each transition has a guard
 (when it can fire) and an effect (what changes). Primed variables like
-<code class="docutils literal notranslate"><span class="pre">light'</span></code> refer to the value in the next state:</p>
+<code class="docutils literal notranslate"><span class="pre">light'</span></code> refer to the value in the <em>next</em> state:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>transition tick {
   timer &gt; 0 ∧ timer&#39; = timer - 1 ∧ light&#39; = light
 }
@@ -279,6 +438,9 @@ transition go_red {
 }
 </pre></div>
 </div>
+<p>Read <code class="docutils literal notranslate"><span class="pre">timer</span> <span class="pre">&gt;</span> <span class="pre">0</span> <span class="pre">∧</span> <span class="pre">timer'</span> <span class="pre">=</span> <span class="pre">timer</span> <span class="pre">-</span> <span class="pre">1</span></code> as: “if timer is greater than 0,
+then in the next state timer equals timer minus 1.” The <code class="docutils literal notranslate"><span class="pre">∧</span></code> chains
+multiple conditions together (just like <code class="docutils literal notranslate"><span class="pre">&amp;&amp;</span></code> in JavaScript).</p>
 <p>The <code class="docutils literal notranslate"><span class="pre">tick</span></code> transition counts the timer down while keeping the light colour.
 The other transitions fire when the timer expires, changing colour and
 resetting the timer. Yellow gets a shorter timer (2 instead of 5).</p>
@@ -286,36 +448,44 @@ resetting the timer. Yellow gets a shorter timer (2 instead of 5).</p>
 <section id="step-3-safety-properties">
 <h2>Step 3: Safety Properties<a class="headerlink" href="#step-3-safety-properties" title="Link to this heading">¶</a></h2>
 <p>Safety properties assert that something bad <em>never</em> happens.
-The <code class="docutils literal notranslate"><span class="pre">□</span></code> (always) operator means “in every reachable state”:</p>
+The <code class="docutils literal notranslate"><span class="pre">□</span></code> (“always”) operator means “in every reachable state”:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>property timer_bounded {
   □ (timer ≥ 0 ∧ timer ≤ 5)
 }
-
-property yellow_is_short {
+</pre></div>
+</div>
+<p>Read this as: “it is <strong>always</strong> the case that timer is between 0 and 5.”
+You could write it with ASCII as <code class="docutils literal notranslate"><span class="pre">[]</span> <span class="pre">(timer</span> <span class="pre">&gt;=</span> <span class="pre">0</span> <span class="pre">/\</span> <span class="pre">timer</span> <span class="pre">&lt;=</span> <span class="pre">5)</span></code>
+or with keywords as <code class="docutils literal notranslate"><span class="pre">always</span> <span class="pre">(timer</span> <span class="pre">&gt;=</span> <span class="pre">0</span> <span class="pre">and</span> <span class="pre">timer</span> <span class="pre">&lt;=</span> <span class="pre">5)</span></code>.</p>
+<p>The implication operator <code class="docutils literal notranslate"><span class="pre">→</span></code> (“if … then”) is useful for conditional
+safety properties:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>property yellow_is_short {
   □ (light = yellow → timer ≤ 2)
 }
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">timer_bounded</span></code> checks the timer never leaves its range.
-<code class="docutils literal notranslate"><span class="pre">yellow_is_short</span></code> checks that whenever the light is yellow, the timer
-is at most 2 — ensuring yellow phases are always short.</p>
+<p>Read this as: “it is always the case that <strong>if</strong> the light is yellow,
+<strong>then</strong> the timer is at most 2.” This ensures yellow phases are always short.</p>
 </section>
 <section id="step-4-liveness-properties">
 <h2>Step 4: Liveness Properties<a class="headerlink" href="#step-4-liveness-properties" title="Link to this heading">¶</a></h2>
 <p>Liveness properties assert that something good <em>eventually</em> happens.
-The <code class="docutils literal notranslate"><span class="pre">□</span> <span class="pre">◇</span></code> (always eventually) pattern means “this keeps happening forever”:</p>
+The <code class="docutils literal notranslate"><span class="pre">□</span> <span class="pre">◇</span></code> (“always eventually”) pattern means “this keeps happening
+forever”:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>property always_cycles {
   □ ◇ (light = red)
 }
 </pre></div>
 </div>
-<p>This says the light always eventually returns to red — it never gets stuck.</p>
+<p>Read this as: “it is <strong>always</strong> the case that the light <strong>eventually</strong>
+becomes red.” In other words, the light never gets permanently stuck —
+no matter what state you’re in, red will come around again.</p>
 </section>
 <section id="step-5-two-lights-at-an-intersection">
 <h2>Step 5: Two Lights at an Intersection<a class="headerlink" href="#step-5-two-lights-at-an-intersection" title="Link to this heading">¶</a></h2>
-<p>Now the payoff of named types: declare two variables with the same <code class="docutils literal notranslate"><span class="pre">Color</span></code> type.
-Both <code class="docutils literal notranslate"><span class="pre">traf1</span></code> and <code class="docutils literal notranslate"><span class="pre">traf2</span></code> share the same enum variants (<code class="docutils literal notranslate"><span class="pre">red</span></code>, <code class="docutils literal notranslate"><span class="pre">green</span></code>,
-<code class="docutils literal notranslate"><span class="pre">yellow</span></code>):</p>
+<p>Now the payoff of named types: declare two variables with the same <code class="docutils literal notranslate"><span class="pre">Color</span></code>
+type. Both <code class="docutils literal notranslate"><span class="pre">traf1</span></code> and <code class="docutils literal notranslate"><span class="pre">traf2</span></code> share the same enum variants (<code class="docutils literal notranslate"><span class="pre">red</span></code>,
+<code class="docutils literal notranslate"><span class="pre">green</span></code>, <code class="docutils literal notranslate"><span class="pre">yellow</span></code>):</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>type Color = enum { red, green, yellow }
 
 let traf1 ∈ Color
@@ -359,18 +529,24 @@ transition swap_to_traf1 {
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>property mutual_exclusion {
   □ ¬ (traf1 = green ∧ traf2 = green)
 }
-
-property one_moving_at_most {
+</pre></div>
+</div>
+<p>Read this as: “it is <strong>always</strong> the case that it is <strong>not</strong> true that both
+traf1 and traf2 are green.” Or more naturally: “both lights are never green
+at the same time.”</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>property one_moving_at_most {
   □ (traf1 ≠ red → traf2 = red)
 }
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">mutual_exclusion</span></code> directly forbids both-green.
-<code class="docutils literal notranslate"><span class="pre">one_moving_at_most</span></code> is stronger: if one light is not red, the other must be.</p>
+<p><code class="docutils literal notranslate"><span class="pre">one_moving_at_most</span></code> is stronger: “if traf1 is <strong>not equal</strong> to red,
+<strong>then</strong> traf2 must be red.” In other words, at most one light can be
+non-red at any time.</p>
 </section>
 <section id="step-7-fairness-properties">
 <h2>Step 7: Fairness Properties<a class="headerlink" href="#step-7-fairness-properties" title="Link to this heading">¶</a></h2>
-<p>Fairness ensures both directions get a turn:</p>
+<p>Fairness ensures both directions get a turn. The <code class="docutils literal notranslate"><span class="pre">→</span></code> combined with <code class="docutils literal notranslate"><span class="pre">◇</span></code>
+lets us say “if this happens, then that will eventually happen”:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>property traf1_green_implies_traf2_next {
   □ (traf1 = green → ◇ (traf2 = green))
 }
@@ -380,7 +556,9 @@ property traf2_green_implies_traf1_next {
 }
 </pre></div>
 </div>
-<p>After one light is green, the other eventually gets green too.</p>
+<p>Read the first one as: “it is <strong>always</strong> the case that <strong>if</strong> traf1 is green,
+<strong>then eventually</strong> traf2 will be green too.” This guarantees neither
+direction is starved.</p>
 </section>
 <section id="step-8-invalid-properties">
 <h2>Step 8: Invalid Properties<a class="headerlink" href="#step-8-invalid-properties" title="Link to this heading">¶</a></h2>
@@ -392,7 +570,7 @@ unexpectedly holds:</p>
 }
 </pre></div>
 </div>
-<p>This claims both lights are eventually green simultaneously. Since the
+<p>This claims “<strong>eventually</strong> both lights are green simultaneously.” Since the
 system prevents that, the property fails — and Caelum reports PASS.</p>
 </section>
 <section id="running-the-full-specification">
@@ -505,6 +683,13 @@ system prevents that, the property fails — and Caelum reports PASS.</p>
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">Tutorial</a><ul>
+<li><a class="reference internal" href="#notation-primer">Notation Primer</a><ul>
+<li><a class="reference internal" href="#logical-connectives">Logical Connectives</a></li>
+<li><a class="reference internal" href="#set-membership">Set Membership</a></li>
+<li><a class="reference internal" href="#temporal-operators">Temporal Operators</a></li>
+<li><a class="reference internal" href="#quick-reference">Quick Reference</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#step-1-a-single-traffic-light">Step 1: A Single Traffic Light</a></li>
 <li><a class="reference internal" href="#step-2-adding-transitions">Step 2: Adding Transitions</a></li>
 <li><a class="reference internal" href="#step-3-safety-properties">Step 3: Safety Properties</a></li>
