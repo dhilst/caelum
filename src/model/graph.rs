@@ -548,6 +548,55 @@ mod tests {
     }
 
     #[test]
+    fn negative_domain_bounds() {
+        // Domain -2..2 should produce 5 states: -2, -1, 0, 1, 2
+        // Two transitions: increment wraps at top, decrement wraps at bottom.
+        // This makes all 5 states reachable from -2.
+        let graph = graph(
+            r"
+            let x: -2..2
+            init { x = -2 }
+            transition up { x' = x + 1 }
+            transition wrap { x' = x - 4 }
+            property p { □ (x >= -2) }
+            ",
+        )
+        .expect("graph should build with negative domain bounds");
+
+        // -2..2 inclusive = 5 values: -2, -1, 0, 1, 2
+        assert_eq!(graph.states.len(), 5);
+        assert_eq!(graph.initial_states.len(), 1);
+        // Initial state should have x = -2
+        let init_idx = graph.initial_states[0];
+        assert_eq!(graph.states[init_idx].values, vec![Value::Int(-2)]);
+    }
+
+    #[test]
+    fn unary_minus_in_init_expression() {
+        // Unary minus used in init expression: x = -1
+        // Also tests that -(x) evaluates correctly in transitions.
+        // Two transitions: negate or stay, so reachable set is {-1, 1}.
+        let graph = graph(
+            r"
+            let x: -2..2
+            init { x = -1 }
+            transition negate { x' = -x }
+            transition stay { x' = x }
+            property p { □ (x = -1 or x = 1) }
+            ",
+        )
+        .expect("graph should build with unary minus in init");
+
+        // Starting at -1, negate gives 1, then negate gives -1 again.
+        // Stay keeps value. Reachable: {-1, 1} = 2 states.
+        assert_eq!(graph.states.len(), 2);
+        assert_eq!(graph.initial_states.len(), 1);
+        // Initial state should have x = -1
+        let init_idx = graph.initial_states[0];
+        assert_eq!(graph.states[init_idx].values, vec![Value::Int(-1)]);
+    }
+
+    #[test]
     fn enforces_state_limit() {
         let file = parse_source(
             r"
