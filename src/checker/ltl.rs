@@ -1157,4 +1157,94 @@ mod tests {
             "counterexample should contain at least one state"
         );
     }
+
+    #[test]
+    fn always_not_not_equivalent_to_always() {
+        // Double negation: `always (not not P)` should be equivalent to `always P`.
+        // Counter cycles 0..2 mod 3.
+        // `always (x >= 0)` passes trivially over the domain.
+        // `always (not not (x >= 0))` must produce the same result.
+        // Also test with a property that fails: `always (x = 0)` fails, and
+        // `always (not not (x = 0))` must also fail.
+        let report = report(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 3 }
+            property plain_pass       { always (x >= 0) }
+            property double_not_pass  { always (not not (x >= 0)) }
+            property plain_fail       { always (x = 0) }
+            property double_not_fail  { always (not not (x = 0)) }
+            ",
+        )
+        .expect("check should run");
+
+        // Both plain and double-not variants of the passing property should pass
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Pass,
+            "always (x >= 0) should pass"
+        );
+        assert_eq!(
+            report.properties[1].status,
+            CheckStatus::Pass,
+            "always (not not (x >= 0)) should also pass"
+        );
+        // Both plain and double-not variants of the failing property should fail
+        assert_eq!(
+            report.properties[2].status,
+            CheckStatus::Fail,
+            "always (x = 0) should fail"
+        );
+        assert_eq!(
+            report.properties[3].status,
+            CheckStatus::Fail,
+            "always (not not (x = 0)) should also fail"
+        );
+        assert!(report.properties[2].counterexample.is_some());
+        assert!(report.properties[3].counterexample.is_some());
+    }
+
+    #[test]
+    fn always_not_fails_when_predicate_holds_in_some_state() {
+        // Single negation: `always (not P)` fails when P holds in at least one
+        // reachable state. Counter cycles 0..2 mod 3.
+        // `always (not (x = 2))` fails because x reaches 2.
+        // `always (not (x = 5))` passes because x never equals 5 in domain 0..2.
+        let report = report(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 3 }
+            property not_two  { always (not (x = 2)) }
+            property not_five { always (not (x = 5)) }
+            ",
+        )
+        .expect("check should run");
+
+        // x reaches 2, so not(x = 2) is false at x=2 => always fails
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Fail,
+            "always (not (x = 2)) should fail because x reaches 2"
+        );
+        let cex = report.properties[0]
+            .counterexample
+            .as_ref()
+            .expect("failing not property should have counterexample");
+        // The counterexample trace should end with x = 2
+        let last_val = match cex.states.last().unwrap().values[0] {
+            Value::Int(v) => v,
+            ref other => panic!("expected Int, got {:?}", other),
+        };
+        assert_eq!(last_val, 2, "counterexample should reach x = 2");
+
+        // x never equals 5 (domain is 0..2), so not(x = 5) always holds
+        assert_eq!(
+            report.properties[1].status,
+            CheckStatus::Pass,
+            "always (not (x = 5)) should pass because x never equals 5"
+        );
+        assert!(report.properties[1].counterexample.is_none());
+    }
 }
