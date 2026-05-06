@@ -709,4 +709,54 @@ mod tests {
             assert_ne!(val, 3, "counterexample should never reach x = 3");
         }
     }
+
+    #[test]
+    fn until_deterministic_counter_passes() {
+        // x cycles 0,1,2,3,0,1,... — (x < 3) holds at every step until x = 3 is reached.
+        let report = report(
+            r"
+            let x: 0..3
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 4 }
+            property lt3_until_eq3 { (x < 3) until (x = 3) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Pass);
+        assert_eq!(report.properties[0].status, CheckStatus::Pass);
+        assert!(report.properties[0].counterexample.is_none());
+    }
+
+    #[test]
+    fn until_deterministic_counter_fails_with_counterexample() {
+        // x cycles 0,1,2,3,0,1,... — (x = 0) breaks at x = 1 before x = 3, so this must fail.
+        // The counterexample is a finite prefix (no cycle) showing x = 0 ceases without x = 3.
+        let report = report(
+            r"
+            let x: 0..3
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 4 }
+            property eq0_until_eq3 { (x = 0) until (x = 3) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Fail);
+        assert_eq!(report.properties[0].status, CheckStatus::Fail);
+        let cex = report.properties[0]
+            .counterexample
+            .as_ref()
+            .expect("failing until property should have counterexample");
+        // The counterexample should be a finite prefix (no cycle), since x = 0 simply
+        // stops holding at x = 1 without x = 3 ever appearing.
+        assert!(
+            cex.cycle_start.is_none(),
+            "counterexample should be a finite prefix (no cycle)"
+        );
+        assert!(
+            !cex.states.is_empty(),
+            "counterexample should contain at least one state"
+        );
+    }
 }
