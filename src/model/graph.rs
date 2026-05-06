@@ -1412,6 +1412,224 @@ mod tests {
     }
 
     #[test]
+    fn three_variables_enum_int_bool_traffic_light_reachable_states() {
+        // Traffic-light controller with 3 variables of different types:
+        //   light: enum { red, yellow, green }
+        //   timer: 0..2 (countdown timer)
+        //   walk_request: bool
+        //
+        // Transitions model a simplified traffic light:
+        //   - green + timer>0: decrement timer, walk_request can toggle freely
+        //   - green + timer=0: go to yellow, reset timer to 2
+        //   - yellow + timer>0: decrement timer, walk_request stays unchanged
+        //   - yellow + timer=0: go to red, reset timer to 2
+        //   - red + timer>0: decrement timer, walk_request stays unchanged
+        //   - red + timer=0 + walk_request: go to green, reset timer, clear walk_request
+        //   - red + timer=0 + !walk_request: go to green, reset timer, walk_request stays false
+        //
+        // Full cross-product: 3 * 3 * 2 = 18 states.
+        // Constraints reduce reachable states because:
+        //   - yellow/red states always preserve walk_request (no toggling)
+        //   - walk_request is cleared on red->green transition
+        //   - walk_request can only be set during green phase
+        //
+        // Let's trace from (green, 2, false):
+        //   (green,2,F) -> (green,1,F) or (green,1,T)  [timer>0, walk can toggle]
+        //   (green,1,F) -> (green,0,F) or (green,0,T)  [timer>0, walk can toggle]
+        //   (green,1,T) -> (green,0,T) or (green,0,F)  [timer>0, walk can toggle]
+        //   (green,0,F) -> (yellow,2,F)                  [timer=0, go yellow]
+        //   (green,0,T) -> (yellow,2,T)                  [timer=0, go yellow]
+        //   (yellow,2,F) -> (yellow,1,F)                 [timer>0, walk preserved]
+        //   (yellow,2,T) -> (yellow,1,T)                 [timer>0, walk preserved]
+        //   (yellow,1,F) -> (yellow,0,F)                 [timer>0]
+        //   (yellow,1,T) -> (yellow,0,T)                 [timer>0]
+        //   (yellow,0,F) -> (red,2,F)                    [timer=0, go red]
+        //   (yellow,0,T) -> (red,2,T)                    [timer=0, go red]
+        //   (red,2,F) -> (red,1,F)                       [timer>0]
+        //   (red,2,T) -> (red,1,T)                       [timer>0]
+        //   (red,1,F) -> (red,0,F)                       [timer>0]
+        //   (red,1,T) -> (red,0,T)                       [timer>0]
+        //   (red,0,F) -> (green,2,F)                     [timer=0, !walk, go green]
+        //   (red,0,T) -> (green,2,F)                     [timer=0, walk, go green, clear walk]
+        //
+        // Reachable states: all 6 green states + (yellow,2,F/T), (yellow,1,F/T),
+        //   (yellow,0,F/T) + (red,2,F/T), (red,1,F/T), (red,0,F/T) = 6+6+6 = 18?
+        //
+        // Actually all 18 are reachable because walk_request can toggle freely in green.
+        // Let me re-constrain: walk_request can only become true, not toggle back during green.
+        // Better: make walk_request only settable from outside (nondeterministic during green
+        // but only true->true, false->{false,true}). Then walk_request=false can appear in
+        // any phase, but once true it stays true until cleared at red->green.
+        //
+        // Simpler approach: deterministic transitions with a specific walk pattern.
+        // walk_request' = !walk_request during green (toggles), preserved during yellow/red.
+        //
+        // From (green,2,F):
+        //   (green,2,F) -> (green,1,T)  [toggle walk]
+        //   (green,1,T) -> (green,0,F)  [toggle walk]
+        //   (green,0,F) -> (yellow,2,F) [go yellow, walk preserved]
+        //   (yellow,2,F) -> (yellow,1,F)
+        //   (yellow,1,F) -> (yellow,0,F)
+        //   (yellow,0,F) -> (red,2,F)
+        //   (red,2,F) -> (red,1,F)
+        //   (red,1,F) -> (red,0,F)
+        //   (red,0,F) -> (green,2,F)  -- cycle back!
+        //
+        // Only 9 states reachable (walk_request=T only appears during green phase
+        // with specific timer values). Let me enumerate:
+        //   green: (green,2,F), (green,1,T), (green,0,F)
+        //   yellow: (yellow,2,F), (yellow,1,F), (yellow,0,F)
+        //   red: (red,2,F), (red,1,F), (red,0,F)
+        // = 9 reachable out of 18 cross-product. 9 edges (deterministic cycle).
+        let graph = graph(
+            r"
+            let light: enum { red, yellow, green }
+            let timer: 0..2
+            let walk_request: bool
+            init { light = green ∧ timer = 2 ∧ walk_request = false }
+            transition green_tick {
+                light = green ∧ timer > 0 ∧
+                light' = green ∧ timer' = timer - 1 ∧
+                ((walk_request = false ∧ walk_request' = true) ∨
+                 (walk_request = true ∧ walk_request' = false))
+            }
+            transition green_to_yellow {
+                light = green ∧ timer = 0 ∧
+                light' = yellow ∧ timer' = 2 ∧ walk_request' = walk_request
+            }
+            transition yellow_tick {
+                light = yellow ∧ timer > 0 ∧
+                light' = yellow ∧ timer' = timer - 1 ∧ walk_request' = walk_request
+            }
+            transition yellow_to_red {
+                light = yellow ∧ timer = 0 ∧
+                light' = red ∧ timer' = 2 ∧ walk_request' = walk_request
+            }
+            transition red_tick {
+                light = red ∧ timer > 0 ∧
+                light' = red ∧ timer' = timer - 1 ∧ walk_request' = walk_request
+            }
+            transition red_to_green {
+                light = red ∧ timer = 0 ∧
+                light' = green ∧ timer' = 2 ∧ walk_request' = false
+            }
+            ",
+        )
+        .expect("graph should build for 3-variable traffic light controller");
+
+        assert_eq!(graph.variables, vec!["light", "timer", "walk_request"]);
+
+        // Full cross-product: 3 (enum) * 3 (int 0..2) * 2 (bool) = 18
+        // Reachable: only 9 due to constrained walk_request toggling
+        assert!(
+            graph.states.len() < 18,
+            "reachable states ({}) should be less than full cross-product (18)",
+            graph.states.len()
+        );
+        assert_eq!(
+            graph.states.len(),
+            9,
+            "exactly 9 states reachable in the constrained traffic light"
+        );
+        assert_eq!(graph.initial_states.len(), 1);
+        // Deterministic cycle: each state has exactly one successor
+        assert_eq!(graph.edge_count(), 9, "9 deterministic edges forming a single cycle");
+    }
+
+    #[test]
+    fn three_variables_correct_variable_count_and_domain_sizes() {
+        // Verify the graph correctly reports 3 variables with their expected
+        // domain sizes: an enum with 4 variants, an int range 0..1 (2 values),
+        // and a bool (2 values).
+        //
+        // Model: a simple 3-variable system where:
+        //   direction: enum { north, south, east, west }
+        //   speed: 0..1
+        //   moving: bool
+        //
+        // Transitions: direction cycles N->E->S->W->N, speed toggles only when
+        // moving is true, moving toggles every step.
+        //
+        // From (north, 0, false):
+        //   (N,0,F) -> (E,0,T)    [dir cycles, speed stays (moving=false), moving toggles]
+        //   (E,0,T) -> (S,1,F)    [dir cycles, speed toggles (moving=true: 0->1), moving toggles]
+        //   (S,1,F) -> (W,1,T)    [dir cycles, speed stays (moving=false), moving toggles]
+        //   (W,1,T) -> (N,0,F)    [dir cycles, speed toggles (moving=true: 1->0), moving toggles]
+        //   -- cycle of length 4!
+        //
+        // Full cross-product: 4 * 2 * 2 = 16 states, but only 4 reachable.
+        let graph = graph(
+            r"
+            let direction: enum { north, south, east, west }
+            let speed: 0..1
+            let moving: bool
+            init { direction = north ∧ speed = 0 ∧ moving = false }
+            transition step {
+                ((direction = north ∧ direction' = east) ∨
+                 (direction = east ∧ direction' = south) ∨
+                 (direction = south ∧ direction' = west) ∨
+                 (direction = west ∧ direction' = north)) ∧
+                ((moving = false ∧ speed' = speed ∧ moving' = true) ∨
+                 (moving = true ∧ speed' = (speed + 1) mod 2 ∧ moving' = false))
+            }
+            ",
+        )
+        .expect("graph should build for 3-variable direction/speed/moving model");
+
+        // Verify variable names
+        assert_eq!(graph.variables.len(), 3, "should have exactly 3 variables");
+        assert_eq!(graph.variables, vec!["direction", "speed", "moving"]);
+
+        // Verify domain sizes
+        assert_eq!(
+            graph.domains.len(),
+            3,
+            "should have 3 domain vectors matching 3 variables"
+        );
+        // direction: enum with 4 variants
+        assert_eq!(
+            graph.domains[0].len(),
+            4,
+            "direction domain should have 4 enum variants"
+        );
+        assert_eq!(
+            graph.domains[0],
+            vec![
+                Value::Enum("north".to_string()),
+                Value::Enum("south".to_string()),
+                Value::Enum("east".to_string()),
+                Value::Enum("west".to_string()),
+            ]
+        );
+        // speed: 0..1 = 2 values
+        assert_eq!(
+            graph.domains[1].len(),
+            2,
+            "speed domain should have 2 int values (0..1)"
+        );
+        assert_eq!(graph.domains[1], vec![Value::Int(0), Value::Int(1)]);
+        // moving: bool = 2 values
+        assert_eq!(
+            graph.domains[2].len(),
+            2,
+            "moving domain should have 2 bool values"
+        );
+        assert_eq!(
+            graph.domains[2],
+            vec![Value::Bool(false), Value::Bool(true)]
+        );
+
+        // Full cross-product: 4 * 2 * 2 = 16, but only 4 reachable
+        assert_eq!(
+            graph.states.len(),
+            4,
+            "only 4 of 16 cross-product states are reachable"
+        );
+        assert_eq!(graph.initial_states.len(), 1);
+        assert_eq!(graph.edge_count(), 4, "deterministic cycle of 4 states");
+    }
+
+    #[test]
     fn enforces_state_limit() {
         let file = parse_source(
             r"
