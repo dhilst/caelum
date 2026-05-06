@@ -390,6 +390,7 @@ pub fn counterexample_as_json(
 #[cfg(test)]
 mod tests {
     use crate::model::build_graph;
+    use crate::model::Value;
     use crate::sema::check_source_file;
     use crate::syntax::parse_source;
 
@@ -464,6 +465,54 @@ mod tests {
         .expect("check should run");
 
         assert_eq!(report.status, CheckStatus::Pass);
+    }
+
+    #[test]
+    fn int_counter_mod_wraparound_range_invariant_passes() {
+        let report = report(
+            r"
+            let x: 0..3
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 4 }
+            property in_range { always (x >= 0 and x <= 3) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Pass);
+        assert_eq!(report.properties[0].status, CheckStatus::Pass);
+        assert!(report.properties[0].counterexample.is_none());
+    }
+
+    #[test]
+    fn int_counter_always_not_max_fails_with_expected_trace() {
+        let report = report(
+            r"
+            let x: 0..3
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 4 }
+            property never_three { always (x != 3) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Fail);
+        assert_eq!(report.properties[0].status, CheckStatus::Fail);
+        let cex = report.properties[0]
+            .counterexample
+            .as_ref()
+            .expect("failing property should have counterexample");
+        // The counterexample trace should go from 0 to 3: [0, 1, 2, 3]
+        assert_eq!(cex.states.len(), 4);
+        let values: Vec<i64> = cex
+            .states
+            .iter()
+            .map(|s| match &s.values[0] {
+                Value::Int(v) => *v,
+                other => panic!("expected Int, got {:?}", other),
+            })
+            .collect();
+        assert_eq!(values, vec![0, 1, 2, 3]);
     }
 
     #[test]
