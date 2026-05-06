@@ -814,4 +814,60 @@ mod tests {
             "counterexample should contain at least one state"
         );
     }
+
+    #[test]
+    fn eventually_always_passes_when_variable_stabilizes() {
+        // Absorbing system: 0->1, 1->2, 2->2.
+        // x eventually reaches 2 and stays there forever,
+        // so `eventually always (x = 2)` holds.
+        let report = report(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition inc { x < 2 and x' = x + 1 }
+            transition absorb { x = 2 and x' = 2 }
+            property ea_stabilizes_at_two { eventually always (x = 2) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Pass);
+        assert_eq!(report.properties[0].status, CheckStatus::Pass);
+        assert!(report.properties[0].counterexample.is_none());
+    }
+
+    #[test]
+    fn eventually_always_fails_when_variable_leaves_permanently() {
+        // Same absorbing system: 0->1, 1->2, 2->2.
+        // x leaves 0 at the very first step and never returns,
+        // so `eventually always (x = 0)` must fail.
+        // The counterexample should be a lasso ending in the 2->2 cycle.
+        let report = report(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition inc { x < 2 and x' = x + 1 }
+            transition absorb { x = 2 and x' = 2 }
+            property ea_stays_at_zero { eventually always (x = 0) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Fail);
+        assert_eq!(report.properties[0].status, CheckStatus::Fail);
+        let cex = report.properties[0]
+            .counterexample
+            .as_ref()
+            .expect("failing eventually-always property should have counterexample");
+        // The counterexample should be a lasso: a path reaching 2->2 cycle
+        // where x = 0 never holds permanently.
+        assert!(
+            cex.cycle_start.is_some(),
+            "counterexample should be a lasso (cycle_start present)"
+        );
+        assert!(
+            !cex.states.is_empty(),
+            "counterexample should contain at least one state"
+        );
+    }
 }
