@@ -1779,4 +1779,133 @@ mod tests {
             "invalid always(not(a and b)) should fail because the property actually holds"
         );
     }
+
+    #[test]
+    fn enum_bool_cross_variable_properties() {
+        // State machine: enum `state: {idle, running, done}` + bool `fail`.
+        // Transitions:
+        //   idle    -> running (fail preserved)
+        //   running -> done    (fail set to false)
+        //   running -> idle    (fail set to true -- abort/failure)
+        //   done    -> idle    (fail set to false)
+        //
+        // Reachable states (5 of 6):
+        //   (idle,F), (running,F), (done,F), (idle,T), (running,T)
+        //   (done,T) is unreachable because running->done always clears fail.
+        //
+        // Cross-variable properties:
+        //   1. always (fail = true -> state = idle or state = running)
+        //      PASSES: fail=true only in (idle,T) and (running,T), both have state != done
+        //   2. always (fail = true -> next (state = running))
+        //      PASSES: from (idle,T) next is (running,T); from (running,T) next is
+        //      (done,F) or (idle,T). Wait -- that means from (running,T) the next
+        //      state could be done or idle, not running. So this FAILS.
+        //      Let me reconsider: from (running,T), transitions are:
+        //        complete: state'=done, fail'=false -> (done,F), state=done not running
+        //        abort: state'=idle, fail'=true -> (idle,T), state=idle not running
+        //      So next(state=running) fails at (running,T). Property FAILS.
+        //   3. always (state = done -> fail = false)
+        //      PASSES: the only reachable done-state is (done,F)
+        //   4. always (state = running -> next (state = done or state = idle))
+        //      PASSES: from running, transitions go to done or idle
+        //   5. always (fail = true -> next (fail = false or state = running))
+        //      From (idle,T): next is (running,T) where state=running -> holds
+        //      From (running,T): next is (done,F) where fail=false, or (idle,T)
+        //        where state is idle not running and fail is true. Hmm...
+        //        (idle,T): fail=true and state=idle (not running) => fails!
+        //      Actually wait -- (running,T) -> (idle,T): fail'=true and state'=idle.
+        //      So at (idle,T): fail=false? No, fail=true. And state=idle not running.
+        //      So the next state (idle,T) does NOT satisfy (fail=false or state=running).
+        //      Property FAILS.
+        //   6. eventually (state = done and fail = false)
+        //      PASSES: every path reaches (done,F) through the success cycle
+        //      Actually... from (idle,T) -> (running,T) -> (idle,T) could loop forever
+        //      via abort. So eventually(done,F) might fail.
+        //      Let me check: from (running,T), successors are (done,F) and (idle,T).
+        //      Since eventually checks all paths (universal), the stutter through
+        //      (idle,T) means there exists a path that never reaches (done,F).
+        //      So this FAILS.
+        //
+        // Let me simplify to clear, well-defined properties:
+        //   P1: always (state = done -> fail = false) -- PASSES
+        //   P2: always (state = running -> next (state = done or state = idle)) -- PASSES
+        //   P3: always (fail = true -> state != done) -- PASSES (equivalent to P1's contrapositive)
+        //   P4: always (fail = true -> next (state = running)) -- FAILS (see above)
+        let report = report(
+            r"
+            let state: enum { idle, running, done }
+            let fail: bool
+            init { state = idle and fail = false }
+            transition start {
+                state = idle and state' = running and fail' = fail
+            }
+            transition complete {
+                state = running and state' = done and fail' = false
+            }
+            transition abort {
+                state = running and state' = idle and fail' = true
+            }
+            transition reset {
+                state = done and state' = idle and fail' = false
+            }
+            property done_means_no_fail {
+                always (state = done -> fail = false)
+            }
+            property running_advances {
+                always (state = running -> next (state = done or state = idle))
+            }
+            property fail_excludes_done {
+                always (fail = true -> state != done)
+            }
+            property fail_implies_next_running {
+                always (fail = true -> next (state = running))
+            }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Fail);
+        assert_eq!(report.properties.len(), 4);
+
+        // P1: done -> not fail. Only reachable done-state is (done,F).
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Pass,
+            "always (state=done -> fail=false) should pass: (done,true) is unreachable"
+        );
+        assert!(report.properties[0].counterexample.is_none());
+
+        // P2: running -> next(done or idle). From running, transitions go to done or idle.
+        assert_eq!(
+            report.properties[1].status,
+            CheckStatus::Pass,
+            "always (state=running -> next(done or idle)) should pass"
+        );
+        assert!(report.properties[1].counterexample.is_none());
+
+        // P3: fail -> state != done. Contrapositive of P1; fail=true only in
+        // (idle,T) and (running,T), both have state != done.
+        assert_eq!(
+            report.properties[2].status,
+            CheckStatus::Pass,
+            "always (fail=true -> state!=done) should pass"
+        );
+        assert!(report.properties[2].counterexample.is_none());
+
+        // P4: fail=true -> next(state=running). Fails because from (running,T),
+        // one successor is (idle,T) where state=idle, not running.
+        assert_eq!(
+            report.properties[3].status,
+            CheckStatus::Fail,
+            "always (fail=true -> next(state=running)) should fail"
+        );
+        let cex = report.properties[3]
+            .counterexample
+            .as_ref()
+            .expect("failing cross-variable property should have counterexample");
+        assert!(
+            !cex.states.is_empty(),
+            "counterexample should contain at least one state"
+        );
+    }
 }

@@ -829,6 +829,72 @@ mod tests {
     }
 
     #[test]
+    fn enum_bool_interaction_reachable_less_than_cross_product() {
+        // Enum `state: {idle, running, done}` and bool `fail`.
+        // The system starts at (idle, false) and transitions:
+        //   idle    -> running (fail stays false)
+        //   running -> done    (fail stays false)
+        //   running -> idle    (fail becomes true -- failure during run)
+        //   done    -> idle    (fail becomes false -- reset)
+        //
+        // Trace from (idle, false):
+        //   (idle,F) -> (running,F) -> (done,F) -> (idle,F)  -- success cycle
+        //                           -> (idle,T)  -- failure branch
+        //   (idle,T) -> (running,T)? No -- transition from idle always sets fail'=false,
+        //   so (idle,T) -> (running,F) -> ... already visited.
+        //
+        // Wait, let's be precise about the transitions:
+        //   idle    -> running: fail' = fail (preserves)
+        //   running -> done:    fail' = false
+        //   running -> idle:    fail' = true  (failure!)
+        //   done    -> idle:    fail' = false
+        //
+        // From (idle,F):  -> (running,F)
+        // From (running,F): -> (done,F) or (idle,T)
+        // From (done,F):  -> (idle,F)
+        // From (idle,T):  -> (running,T)
+        // From (running,T): -> (done,F) or (idle,T)
+        //
+        // Reachable: {(idle,F), (running,F), (done,F), (idle,T), (running,T)} = 5
+        // Full cross-product: 3 * 2 = 6. State (done,T) is unreachable because
+        // the running->done transition always sets fail'=false.
+        let graph = graph(
+            r"
+            let state: enum { idle, running, done }
+            let fail: bool
+            init { state = idle and fail = false }
+            transition start {
+                state = idle and state' = running and fail' = fail
+            }
+            transition complete {
+                state = running and state' = done and fail' = false
+            }
+            transition abort {
+                state = running and state' = idle and fail' = true
+            }
+            transition reset {
+                state = done and state' = idle and fail' = false
+            }
+            ",
+        )
+        .expect("graph should build for enum + bool interaction");
+
+        assert_eq!(graph.variables, vec!["state", "fail"]);
+        // Full cross-product is 3 * 2 = 6, but (done, true) is unreachable
+        assert!(
+            graph.states.len() < 6,
+            "reachable states ({}) should be less than full cross-product (6)",
+            graph.states.len()
+        );
+        assert_eq!(
+            graph.states.len(),
+            5,
+            "exactly 5 states reachable (done,true is unreachable)"
+        );
+        assert_eq!(graph.initial_states.len(), 1);
+    }
+
+    #[test]
     fn enforces_state_limit() {
         let file = parse_source(
             r"
