@@ -1598,4 +1598,89 @@ mod tests {
             "counterexample should contain at least one state"
         );
     }
+
+    #[test]
+    fn two_bool_vars_cross_variable_properties_and_invalid() {
+        // Two boolean variables: `a` toggles, `b` follows `a` with 1-step delay.
+        // Reachable cycle after init: (F,F) -> (T,F) -> (F,T) -> (T,F) -> ...
+        //
+        // Properties referencing both variables:
+        //   1. always (a = true or b = true) -- FAILS: initial state is (F,F)
+        //   2. always (a = true or b = false) -- FAILS: state (F,T) violates it
+        //   3. always (not (a = true and b = true)) -- PASSES: (T,T) is never reachable
+        //   4. always (a = true -> next (b = true)) -- PASSES: when a=T in state (T,F),
+        //      next state is (F,T) where b=T; b' = a, so whenever a is true now,
+        //      b is true in the next state.
+        //   5. invalid: not (a = true and b = true) should be EXPECTED to fail
+        //      as a property (it holds everywhere), so marking it `invalid`
+        //      means the checker expects it to NOT hold -- this should FAIL
+        //      because the property actually holds.
+        //   6. invalid: a = true and b = true -- this can never be satisfied in
+        //      any reachable state, so `always (a = true and b = true)` fails
+        //      as expected. Marking it `invalid` means we expect failure, so
+        //      the invalid check should PASS.
+        let report = report(
+            r"
+            let a: bool
+            let b: bool
+            init { a = false and b = false }
+            transition step {
+                (a = false and a' = true and b' = a) or
+                (a = true and a' = false and b' = a)
+            }
+            property at_least_one_true { always (a = true or b = true) }
+            property never_both_true { always (not (a = true and b = true)) }
+            property a_implies_next_b { always (a = true -> next (b = true)) }
+            invalid both_true_unreachable { always (a = true and b = true) }
+            invalid never_both_true_holds { always (not (a = true and b = true)) }
+            ",
+        )
+        .expect("check should run");
+
+        // Overall status must be Fail (some properties/invalids fail)
+        assert_eq!(report.status, CheckStatus::Fail);
+        assert_eq!(report.properties.len(), 5);
+
+        // Property 1: always (a or b) fails at initial state (F,F)
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Fail,
+            "always (a=true or b=true) should fail because initial state is (F,F)"
+        );
+        assert!(report.properties[0].counterexample.is_some());
+
+        // Property 2: always (not (a and b)) passes -- (T,T) never reachable
+        assert_eq!(
+            report.properties[1].status,
+            CheckStatus::Pass,
+            "always (not (a=true and b=true)) should pass because (T,T) is unreachable"
+        );
+        assert!(report.properties[1].counterexample.is_none());
+
+        // Property 3: always (a -> next b) passes
+        assert_eq!(
+            report.properties[2].status,
+            CheckStatus::Pass,
+            "always (a=true -> next(b=true)) should pass: b follows a with 1-step delay"
+        );
+        assert!(report.properties[2].counterexample.is_none());
+
+        // Invalid 4: always (a and b) -- expected to fail, and it does fail
+        // (no reachable state has both true), so invalid check PASSES
+        assert_eq!(report.properties[3].kind, PropertyKind::Invalid);
+        assert_eq!(
+            report.properties[3].status,
+            CheckStatus::Pass,
+            "invalid always(a and b) should pass because the property indeed fails"
+        );
+
+        // Invalid 5: always (not (a and b)) -- expected to fail, but it actually
+        // passes (holds everywhere), so invalid check FAILS
+        assert_eq!(report.properties[4].kind, PropertyKind::Invalid);
+        assert_eq!(
+            report.properties[4].status,
+            CheckStatus::Fail,
+            "invalid always(not(a and b)) should fail because the property actually holds"
+        );
+    }
 }

@@ -688,6 +688,42 @@ mod tests {
     }
 
     #[test]
+    fn two_bool_vars_toggle_and_follow_reachable_states() {
+        // Two boolean variables: `a` toggles each step, `b` follows `a` with a
+        // one-step delay (b' = a). Starting from (a=false, b=false):
+        //   (F,F) -> (T,F) -> (F,T) -> (T,F) -> ...
+        // Reachable states: {(F,F), (T,F), (F,T)} -- note (T,T) is never reached
+        // because when a becomes true, b is still the old value of a (false), and
+        // when b catches up to true, a has already toggled back to false.
+        // Wait -- let's trace more carefully:
+        //   (F,F): a'=T, b'=a=F => (T,F)
+        //   (T,F): a'=F, b'=a=T => (F,T)
+        //   (F,T): a'=T, b'=a=F => (T,F)  -- cycle back
+        // So reachable = {(F,F), (T,F), (F,T)} = 3 states, not the full 4.
+        // After the initial state, the system cycles between (T,F) and (F,T).
+        let graph = graph(
+            r"
+            let a: bool
+            let b: bool
+            init { a = false and b = false }
+            transition step {
+                (a = false and a' = true and b' = a) or
+                (a = true and a' = false and b' = a)
+            }
+            ",
+        )
+        .expect("graph should build for two-bool toggle-and-follow system");
+
+        // Full domain is 2*2=4 states, but only 3 are reachable
+        assert_eq!(graph.states.len(), 3, "only 3 of 4 bool-pair states are reachable");
+        assert_eq!(graph.initial_states.len(), 1);
+        // Deterministic: each state has exactly one successor
+        assert_eq!(graph.edge_count(), 3);
+        // Verify variables
+        assert_eq!(graph.variables, vec!["a", "b"]);
+    }
+
+    #[test]
     fn enforces_state_limit() {
         let file = parse_source(
             r"
