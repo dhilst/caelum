@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 
-use crate::diagnostics::{Result, TplError};
+use crate::diagnostics::{Result, CaelumError};
 use crate::syntax::{ConstDecl, Domain, DomainBound, InitBlock, Item, SourceFile, TransitionBlock};
 
 use super::eval::{eval_expr, expect_bool, expect_int, EvalEnv};
@@ -67,7 +67,7 @@ pub fn build_graph_with_options(file: &SourceFile, options: &BuildOptions) -> Re
     let env = EvalEnv::new(consts, enum_values, variable_indexes);
     let all_states = enumerate_states(&domains);
     if all_states.len() > options.max_states {
-        return Err(TplError::Model {
+        return Err(CaelumError::Model {
             message: format!(
                 "state domain has {} states, exceeding --max-states {}",
                 all_states.len(),
@@ -99,7 +99,7 @@ pub fn build_graph_with_options(file: &SourceFile, options: &BuildOptions) -> Re
         }
     }
     if initial_candidates.is_empty() {
-        return Err(TplError::Model {
+        return Err(CaelumError::Model {
             message: "no initial states satisfy the init predicate".to_owned(),
         });
     }
@@ -203,7 +203,7 @@ impl<'a> ReachableBuilder<'a> {
 
         let deadlocks = graph.deadlocks();
         if let Some(first) = deadlocks.first() {
-            return Err(TplError::Model {
+            return Err(CaelumError::Model {
                 message: format!("deadlock detected at reachable state #{first}"),
             });
         }
@@ -218,7 +218,7 @@ impl<'a> ReachableBuilder<'a> {
 
         let id = self.states.len();
         if id >= self.options.max_states {
-            return Err(TplError::Model {
+            return Err(CaelumError::Model {
                 message: format!(
                     "reachable state count exceeded --max-states {}",
                     self.options.max_states
@@ -271,7 +271,7 @@ fn domain_values(
             let start = domain_bound_value(start, constants)?;
             let end = domain_bound_value(end, constants)?;
             if start > end {
-                return Err(TplError::Model {
+                return Err(CaelumError::Model {
                     message: format!("empty integer range for `{var_name}`: {start}..{end}"),
                 });
             }
@@ -288,7 +288,7 @@ fn domain_bound_value(bound: &DomainBound, constants: &HashMap<String, Value>) -
     match bound {
         DomainBound::Int(value) => Ok(*value),
         DomainBound::Name(name) => {
-            let value = constants.get(name).ok_or_else(|| TplError::Model {
+            let value = constants.get(name).ok_or_else(|| CaelumError::Model {
                 message: format!("unknown range bound constant `{name}`"),
             })?;
             expect_int(value.clone(), "range bound")

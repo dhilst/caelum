@@ -74,6 +74,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "caelum"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "pest",
+ "pest_derive",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -496,19 +509,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "tplgine"
-version = "0.1.0"
-dependencies = [
- "clap",
- "pest",
- "pest_derive",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
 ]
 
 [[package]]

@@ -152,6 +152,7 @@ impl Printer {
             (_, BinaryOp::Div) => "/",
             (_, BinaryOp::Mod) => "mod",
             (_, BinaryOp::Eq) => "=",
+            (PrintMode::UnicodeOperators, BinaryOp::Ne) => "≠",
             (_, BinaryOp::Ne) => "!=",
             (_, BinaryOp::Lt) => "<",
             (_, BinaryOp::Le) => "<=",
@@ -163,7 +164,9 @@ impl Printer {
             (PrintMode::Keywords, BinaryOp::Or) => "or",
             (PrintMode::AsciiOperators, BinaryOp::Or) => "\\/",
             (PrintMode::UnicodeOperators, BinaryOp::Or) => "∨",
+            (PrintMode::UnicodeOperators, BinaryOp::Implies) => "→",
             (_, BinaryOp::Implies) => "->",
+            (PrintMode::UnicodeOperators, BinaryOp::Iff) => "↔",
             (_, BinaryOp::Iff) => "<->",
             (PrintMode::Keywords, BinaryOp::Until) => "until",
             (PrintMode::AsciiOperators, BinaryOp::Until) => "U",
@@ -328,6 +331,44 @@ mod tests {
                 PrintMode::default()
             ),
             "let x ∈ 0..3\n\nproperty p {\n  ¬ a ∧ b ∨ c\n}\n"
+        );
+    }
+
+    #[test]
+    fn prints_unicode_implies_iff_ne() {
+        assert_eq!(
+            print("property p { x = 0 -> x = 1 }", PrintMode::UnicodeOperators),
+            "property p {\n  x = 0 → x = 1\n}\n"
+        );
+        assert_eq!(
+            print(
+                "property p { x = 0 <-> x = 1 }",
+                PrintMode::UnicodeOperators
+            ),
+            "property p {\n  x = 0 ↔ x = 1\n}\n"
+        );
+        assert_eq!(
+            print("property p { x != 0 }", PrintMode::UnicodeOperators),
+            "property p {\n  x ≠ 0\n}\n"
+        );
+    }
+
+    #[test]
+    fn prints_ascii_implies_iff_ne() {
+        assert_eq!(
+            print("property p { x = 0 → x = 1 }", PrintMode::AsciiOperators),
+            "property p {\n  x = 0 -> x = 1\n}\n"
+        );
+        assert_eq!(
+            print(
+                "property p { x = 0 ↔ x = 1 }",
+                PrintMode::AsciiOperators
+            ),
+            "property p {\n  x = 0 <-> x = 1\n}\n"
+        );
+        assert_eq!(
+            print("property p { x ≠ 0 }", PrintMode::AsciiOperators),
+            "property p {\n  x != 0\n}\n"
         );
     }
 

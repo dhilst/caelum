@@ -1,8 +1,8 @@
 [package]
-name = "tplgine"
+name = "caelum"
 version = "0.1.0"
 edition = "2021"
-description = "Temporal propositional logic engine and model checker"
+description = "LTL model checker"
 license = "MIT"
 
 [dependencies]

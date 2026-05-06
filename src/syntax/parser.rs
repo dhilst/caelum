@@ -4,20 +4,20 @@ use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
 
-use crate::diagnostics::{Result, TplError};
+use crate::diagnostics::{Result, CaelumError};
 
 use super::ast::*;
 
 #[derive(Parser)]
 #[grammar = "syntax/grammar.pest"]
-struct TplParser;
+struct CaelumParser;
 
 pub fn parse_source(source: &str) -> Result<SourceFile> {
     parse_source_file(Path::new("<memory>"), source)
 }
 
 pub fn parse_source_file(path: &Path, source: &str) -> Result<SourceFile> {
-    let mut pairs = TplParser::parse(Rule::file, source).map_err(|err| TplError::Parse {
+    let mut pairs = CaelumParser::parse(Rule::file, source).map_err(|err| CaelumError::Parse {
         path: path.to_path_buf(),
         message: err.to_string(),
     })?;
@@ -45,7 +45,7 @@ fn parse_file(path: &Path, pair: Pair<'_, Rule>) -> Result<SourceFile> {
             Rule::invalid_block => items.push(Item::Property(parse_invalid_block(child)?)),
             Rule::EOI => {}
             rule => {
-                return Err(TplError::Parse {
+                return Err(CaelumError::Parse {
                     path: PathBuf::from(path),
                     message: format!("unexpected top-level rule: {rule:?}"),
                 });
@@ -177,7 +177,7 @@ fn parse_domain(pair: Pair<'_, Rule>) -> Result<Domain> {
                 .map(|variant| variant.as_str().to_owned())
                 .collect(),
         }),
-        rule => Err(TplError::Parse {
+        rule => Err(CaelumError::Parse {
             path: PathBuf::from("<memory>"),
             message: format!("unexpected domain rule: {rule:?}"),
         }),
@@ -188,7 +188,7 @@ fn parse_domain_bound(pair: Pair<'_, Rule>) -> Result<DomainBound> {
     match pair.as_rule() {
         Rule::int_lit => Ok(DomainBound::Int(parse_i64(pair)?)),
         Rule::ident => Ok(DomainBound::Name(pair.as_str().to_owned())),
-        rule => Err(TplError::Parse {
+        rule => Err(CaelumError::Parse {
             path: PathBuf::from("<memory>"),
             message: format!("unexpected range bound rule: {rule:?}"),
         }),
@@ -221,7 +221,7 @@ fn parse_expr_pair(pair: Pair<'_, Rule>) -> Result<Expr> {
                 .to_owned();
             Ok(Expr::PrimedName(name))
         }
-        rule => Err(TplError::Parse {
+        rule => Err(CaelumError::Parse {
             path: PathBuf::from("<memory>"),
             message: format!("unexpected expression rule: {rule:?}"),
         }),
@@ -337,7 +337,7 @@ fn binary_op_from_pair(pair: Pair<'_, Rule>) -> BinaryOp {
         },
         Rule::comp_op => match pair.as_str() {
             "=" => BinaryOp::Eq,
-            "!=" => BinaryOp::Ne,
+            "!=" | "≠" => BinaryOp::Ne,
             "<" => BinaryOp::Lt,
             "<=" => BinaryOp::Le,
             ">" => BinaryOp::Gt,
@@ -349,7 +349,7 @@ fn binary_op_from_pair(pair: Pair<'_, Rule>) -> BinaryOp {
 }
 
 fn parse_i64(pair: Pair<'_, Rule>) -> Result<i64> {
-    pair.as_str().parse::<i64>().map_err(|err| TplError::Parse {
+    pair.as_str().parse::<i64>().map_err(|err| CaelumError::Parse {
         path: PathBuf::from("<memory>"),
         message: format!("invalid integer literal `{}`: {err}", pair.as_str()),
     })
@@ -365,7 +365,7 @@ fn unescape_string(path: &Path, raw: &str) -> Result<String> {
             continue;
         }
 
-        let escaped = chars.next().ok_or_else(|| TplError::Parse {
+        let escaped = chars.next().ok_or_else(|| CaelumError::Parse {
             path: path.to_path_buf(),
             message: "unterminated string escape".to_owned(),
         })?;
@@ -377,7 +377,7 @@ fn unescape_string(path: &Path, raw: &str) -> Result<String> {
             'r' => out.push('\r'),
             't' => out.push('\t'),
             other => {
-                return Err(TplError::Parse {
+                return Err(CaelumError::Parse {
                     path: path.to_path_buf(),
                     message: format!("unsupported string escape: \\{other}"),
                 });
@@ -519,7 +519,7 @@ mod tests {
         let file = parse_source(
             r#"
             module examples.counter
-            import "common.tpl"
+            import "common.lum"
 
             const max = 3
             let x ∈ 0..max
@@ -538,7 +538,22 @@ mod tests {
                 parts: vec!["examples".into(), "counter".into()]
             })
         );
-        assert_eq!(file.imports[0].path, "common.tpl");
+        assert_eq!(file.imports[0].path, "common.lum");
         assert_eq!(file.item_count(), 6);
+    }
+
+    #[test]
+    fn normalizes_implies_iff_ne_unicode_operators() {
+        let ascii_implies = first_property_expr("property p { x = 0 -> x = 1 }");
+        let unicode_implies = first_property_expr("property p { x = 0 → x = 1 }");
+        assert_eq!(ascii_implies, unicode_implies);
+
+        let ascii_iff = first_property_expr("property p { x = 0 <-> x = 1 }");
+        let unicode_iff = first_property_expr("property p { x = 0 ↔ x = 1 }");
+        assert_eq!(ascii_iff, unicode_iff);
+
+        let ascii_ne = first_property_expr("property p { x != 0 }");
+        let unicode_ne = first_property_expr("property p { x ≠ 0 }");
+        assert_eq!(ascii_ne, unicode_ne);
     }
 }

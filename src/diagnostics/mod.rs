@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub enum TplError {
+pub enum CaelumError {
     #[error("failed to read {path}: {source}")]
     ReadFile {
         path: PathBuf,
@@ -11,7 +11,7 @@ pub enum TplError {
         source: std::io::Error,
     },
 
-    #[error("expected a .tpl file, got {path}")]
+    #[error("expected a .lum file, got {path}")]
     InvalidExtension { path: PathBuf },
 
     #[error("import error: {message}")]
@@ -30,4 +30,4 @@ pub enum TplError {
     Unsupported { message: String },
 }
 
-pub type Result<T> = std::result::Result<T, TplError>;
+pub type Result<T> = std::result::Result<T, CaelumError>;

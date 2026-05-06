@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::diagnostics::{Result, TplError};
+use crate::diagnostics::{Result, CaelumError};
 use crate::syntax::{BinaryOp, Domain, DomainBound, Expr, Item, SourceFile, UnaryOp, VarDecl};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -292,7 +292,7 @@ impl Checker {
     }
 
     fn symbol(&self, name: &str) -> Result<&Symbol> {
-        self.symbols.get(name).ok_or_else(|| TplError::Semantic {
+        self.symbols.get(name).ok_or_else(|| CaelumError::Semantic {
             message: format!("unknown identifier `{name}`"),
         })
     }
@@ -311,7 +311,7 @@ impl Checker {
 }
 
 fn semantic_error<T>(message: impl Into<String>) -> Result<T> {
-    Err(TplError::Semantic {
+    Err(CaelumError::Semantic {
         message: message.into(),
     })
 }

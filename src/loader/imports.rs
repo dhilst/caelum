@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::diagnostics::{Result, TplError};
+use crate::diagnostics::{Result, CaelumError};
 use crate::syntax::{parse_source_file, ImportDecl, SourceFile};
 
 #[derive(Debug, Clone, Default)]
@@ -26,7 +26,7 @@ struct Loader {
 }
 
 pub fn load_spec(path: &Path, options: &LoadOptions) -> Result<LoadedSpec> {
-    validate_tpl_extension(path)?;
+    validate_extension(path)?;
     let root = canonicalize_existing(path)?;
     let mut loader = Loader {
         options: options.clone(),
@@ -48,7 +48,7 @@ impl Loader {
         if let Some(position) = self.stack.iter().position(|entry| entry == &canonical) {
             let mut chain = self.stack[position..].to_vec();
             chain.push(canonical);
-            return Err(TplError::Import {
+            return Err(CaelumError::Import {
                 message: format!("import cycle detected: {}", format_chain(&chain)),
             });
         }
@@ -63,7 +63,7 @@ impl Loader {
 
         self.stack.push(canonical.clone());
 
-        let source = fs::read_to_string(&canonical).map_err(|source| TplError::ReadFile {
+        let source = fs::read_to_string(&canonical).map_err(|source| CaelumError::ReadFile {
             path: canonical.clone(),
             source,
         })?;
@@ -90,7 +90,7 @@ impl Loader {
 
     fn resolve_import(&self, importer: &Path, import: &ImportDecl) -> Result<PathBuf> {
         let import_path = Path::new(&import.path);
-        validate_tpl_extension(import_path)?;
+        validate_extension(import_path)?;
 
         let mut candidates = Vec::new();
         if import_path.is_absolute() {
@@ -110,7 +110,7 @@ impl Loader {
             }
         }
 
-        Err(TplError::Import {
+        Err(CaelumError::Import {
             message: format!(
                 "could not resolve import `{}` from {}",
                 import.path,
@@ -120,18 +120,18 @@ impl Loader {
     }
 }
 
-fn validate_tpl_extension(path: &Path) -> Result<()> {
-    if path.extension().and_then(|ext| ext.to_str()) == Some("tpl") {
+fn validate_extension(path: &Path) -> Result<()> {
+    if path.extension().and_then(|ext| ext.to_str()) == Some("lum") {
         Ok(())
     } else {
-        Err(TplError::InvalidExtension {
+        Err(CaelumError::InvalidExtension {
             path: path.to_path_buf(),
         })
     }
 }
 
 fn canonicalize_existing(path: &Path) -> Result<PathBuf> {
-    path.canonicalize().map_err(|source| TplError::ReadFile {
+    path.canonicalize().map_err(|source| CaelumError::ReadFile {
         path: path.to_path_buf(),
         source,
     })
@@ -156,10 +156,10 @@ mod tests {
     #[test]
     fn loads_imported_items_before_root_items() {
         let dir = tempdir().expect("tempdir");
-        let common = dir.path().join("common.tpl");
-        let root = dir.path().join("main.tpl");
+        let common = dir.path().join("common.lum");
+        let root = dir.path().join("main.lum");
         fs::write(&common, "const max = 3\n").expect("write common");
-        fs::write(&root, "import \"common.tpl\"\nlet x: 0..max\n").expect("write root");
+        fs::write(&root, "import \"common.lum\"\nlet x: 0..max\n").expect("write root");
 
         let spec = load_spec(&root, &LoadOptions::default()).expect("load spec");
 
@@ -170,10 +170,10 @@ mod tests {
     #[test]
     fn detects_import_cycles() {
         let dir = tempdir().expect("tempdir");
-        let a = dir.path().join("a.tpl");
-        let b = dir.path().join("b.tpl");
-        fs::write(&a, "import \"b.tpl\"\n").expect("write a");
-        fs::write(&b, "import \"a.tpl\"\n").expect("write b");
+        let a = dir.path().join("a.lum");
+        let b = dir.path().join("b.lum");
+        fs::write(&a, "import \"b.lum\"\n").expect("write a");
+        fs::write(&b, "import \"a.lum\"\n").expect("write b");
 
         let err = load_spec(&a, &LoadOptions::default()).expect_err("cycle should fail");
 

@@ -51,11 +51,11 @@ next_op = { "next" | "()" | "◯" }
 until_op = { "until" | "U" | "𝒰" }
 or_op = { "or" | "\\/" | "∨" }
 and_op = { "and" | "/\\" | "∧" }
-implies_op = { "->" }
-iff_op = { "<->" }
+implies_op = { "->" | "→" }
+iff_op = { "<->" | "↔" }
 add_op = { "+" | "-" }
 mul_op = { "*" | "/" | "mod" }
-comp_op = { "=" | "!=" | "<=" | "<" | ">=" | ">" }
+comp_op = { "=" | "!=" | "≠" | "<=" | "<" | ">=" | ">" }
 
 primed_ident = { ident ~ "'" }
 ident = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }

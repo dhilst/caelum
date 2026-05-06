@@ -1,9 +1,9 @@
-# tplgine Specification
+# Caelum Specification
 
 ## 1. Purpose
 
-`tplgine` is a command-line temporal propositional logic engine and model checker.
-It reads one root specification file with the `.tpl` extension, resolves any imports,
+`caelum` is a command-line LTL model checker.
+It reads one root specification file with the `.lum` extension, resolves any imports,
 parses the combined specification, builds a normalized internal representation, and
 checks whether the declared temporal properties hold for the transition system
 described by the specification.
@@ -24,11 +24,11 @@ is implemented with `clap`.
 
 The project must provide:
 
-1. A `.tpl` specification language for finite-state temporal propositional models.
+1. A `.lum` specification language for finite-state temporal propositional models.
 2. A parser that accepts keyword, ASCII, and Unicode temporal operator spellings.
 3. A normalized AST where temporal operators are stored in canonical keyword form.
 4. Pretty printers that can emit keyword, ASCII, or Unicode operator syntax.
-5. Import resolution across multiple `.tpl` files.
+5. Import resolution across multiple `.lum` files.
 6. Static validation for declarations, duplicate names, type errors, and malformed
    temporal formulas.
 7. A model checker for temporal properties over finite transition systems.
@@ -36,7 +36,7 @@ The project must provide:
 9. A CLI shaped primarily as:
 
    ```text
-   tplgine <spec>.tpl
+   caelum <spec>.lum
    ```
 
 ## 3. Non-Goals
@@ -60,8 +60,8 @@ explicit model checker.
 
 | Term | Meaning |
 | --- | --- |
-| Specification | A root `.tpl` file plus all imported `.tpl` files. |
-| Module | One `.tpl` file after parsing. |
+| Specification | A root `.lum` file plus all imported `.lum` files. |
+| Module | One `.lum` file after parsing. |
 | State variable | A declared variable whose value is part of a system state. |
 | Current-state expression | An expression over unprimed variables. |
 | Next-state expression | An expression that may refer to primed variables. |
@@ -77,7 +77,7 @@ explicit model checker.
 
 ### 5.1 File Extension
 
-All source files must use the `.tpl` extension.
+All source files must use the `.lum` extension.
 
 The CLI must reject a root input file with any other extension unless a future
 compatibility flag explicitly permits it.
@@ -135,12 +135,12 @@ Comments are ignored by the parser except for preserving source locations.
 ### 6.1 Main Invocation
 
 ```text
-tplgine <spec>.tpl
+caelum <spec>.lum
 ```
 
 By default, this command:
 
-1. Loads the root `.tpl` file.
+1. Loads the root `.lum` file.
 2. Resolves imports.
 3. Parses all modules.
 4. Performs semantic validation.
@@ -169,13 +169,13 @@ code. For example, parse errors are reported before semantic errors.
 The initial CLI must support:
 
 ```text
-tplgine <spec>.tpl
-tplgine check <spec>.tpl
-tplgine parse <spec>.tpl
-tplgine fmt <spec>.tpl
+caelum <spec>.lum
+caelum check <spec>.lum
+caelum parse <spec>.lum
+caelum fmt <spec>.lum
 ```
 
-`tplgine <spec>.tpl` is equivalent to `tplgine check <spec>.tpl`.
+`caelum <spec>.lum` is equivalent to `caelum check <spec>.lum`.
 
 ### 6.4 Printer Options
 
@@ -253,7 +253,7 @@ Meanings:
 
 ## 7. Language Overview
 
-A `.tpl` file contains declarations and property checks.
+A `.lum` file contains declarations and property checks.
 
 Example:
 
@@ -316,8 +316,8 @@ module examples.counter
 Imports appear at the top level:
 
 ```tpl
-import "common.tpl"
-import "arith/ring.tpl"
+import "common.lum"
+import "arith/ring.lum"
 ```
 
 Imports are resolved relative to:
@@ -331,7 +331,7 @@ The root file's directory is always an implicit include path.
 
 The import resolver must:
 
-- Require imported files to have the `.tpl` extension.
+- Require imported files to have the `.lum` extension.
 - Canonicalize filesystem paths before cycle detection.
 - Load each canonical file at most once.
 - Detect import cycles.
@@ -341,16 +341,16 @@ Example diagnostic:
 
 ```text
 error[import-cycle]: import cycle detected
-  --> specs/a.tpl:3:8
+  --> specs/a.lum:3:8
    |
- 3 | import "b.tpl"
+ 3 | import "b.lum"
    |        ^^^^^^^
    |
    = import chain:
-     specs/a.tpl
-     specs/b.tpl
-     specs/c.tpl
-     specs/a.tpl
+     specs/a.lum
+     specs/b.lum
+     specs/c.lum
+     specs/a.lum
 ```
 
 ### 8.4 Visibility
@@ -428,7 +428,7 @@ unless the grammar can support signed literals without ambiguity.
 Strings are used only for imports in the first release.
 
 ```tpl
-import "path/to/file.tpl"
+import "path/to/file.lum"
 ```
 
 Strings support these escapes:
@@ -1350,7 +1350,7 @@ Example:
 
 ```text
 error[type-mismatch]: expected boolean expression
-  --> specs/counter.tpl:12:10
+  --> specs/counter.lum:12:10
    |
 12 | property p { always (x + 1) }
    |                      ^^^^^ expected bool, found int
@@ -1428,9 +1428,9 @@ Unless that expression has identical parse semantics under the defined precedenc
 Formatting should be idempotent:
 
 ```text
-tplgine fmt spec.tpl > formatted.tpl
-tplgine fmt formatted.tpl > formatted2.tpl
-diff formatted.tpl formatted2.tpl
+caelum fmt spec.lum > formatted.lum
+caelum fmt formatted.lum > formatted2.lum
+diff formatted.lum formatted2.lum
 ```
 
 Should produce no differences.
@@ -1441,9 +1441,9 @@ The exact schema may evolve before stabilization, but the initial shape should b
 
 ```json
 {
-  "tool": "tplgine",
+  "tool": "caelum",
   "status": "pass",
-  "root": "specs/counter.tpl",
+  "root": "specs/counter.lum",
   "stats": {
     "modules": 1,
     "variables": 1,
@@ -1465,7 +1465,7 @@ On failure:
 
 ```json
 {
-  "tool": "tplgine",
+  "tool": "caelum",
   "status": "fail",
   "properties": [
     {
@@ -1489,7 +1489,7 @@ On failure:
 Recommended crate layout:
 
 ```text
-tplgine/
+caelum/
   Cargo.toml
   docs/
     SPEC.md
@@ -1661,7 +1661,7 @@ property every_request_gets_grant {
 
 ### 25.3 Import
 
-`common.tpl`:
+`common.lum`:
 
 ```tpl
 module common
@@ -1669,12 +1669,12 @@ module common
 const max = 3
 ```
 
-`main.tpl`:
+`main.lum`:
 
 ```tpl
 module main
 
-import "common.tpl"
+import "common.lum"
 
 let x: 0..max
 

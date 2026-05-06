@@ -6,15 +6,15 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 
 use crate::checker::ltl::counterexample_as_json;
 use crate::checker::{check_properties, CheckReport, CheckStatus};
-use crate::diagnostics::{Result, TplError};
+use crate::diagnostics::{Result, CaelumError};
 use crate::loader::{load_spec, LoadOptions, LoadedSpec};
 use crate::model::{build_graph_with_options, BuildOptions, ModelGraph};
 use crate::sema::check_source_file;
 use crate::syntax::{parse_source_file, PrintMode, Printer, PropertyKind, SourceFile};
 
 #[derive(Debug, Parser)]
-#[command(name = "tplgine")]
-#[command(about = "Temporal propositional logic engine and model checker")]
+#[command(name = "caelum")]
+#[command(about = "LTL model checker")]
 #[command(version)]
 pub struct Cli {
     #[command(subcommand)]
@@ -142,8 +142,8 @@ fn run_cli(cli: Cli) -> Result<bool> {
             Ok(true)
         }
         None => {
-            let spec = cli.spec.ok_or_else(|| TplError::Unsupported {
-                message: "missing <spec>.tpl argument".to_owned(),
+            let spec = cli.spec.ok_or_else(|| CaelumError::Unsupported {
+                message: "missing <spec>.lum argument".to_owned(),
             })?;
             check(
                 &spec,
@@ -187,7 +187,7 @@ fn parse(path: &Path, format: OutputFormat, load_options: &LoadOptions) -> Resul
             println!(
                 "{}",
                 serde_json::json!({
-                    "tool": "tplgine",
+                    "tool": "caelum",
                     "status": "parsed",
                     "root": spec.root,
                     "files": spec.files.len(),
@@ -293,7 +293,7 @@ fn print_json_report(spec: &LoadedSpec, graph: &ModelGraph, report: &CheckReport
     println!(
         "{}",
         serde_json::json!({
-            "tool": "tplgine",
+            "tool": "caelum",
             "status": report.status,
             "root": spec.root,
             "files": spec.files.len(),
@@ -317,32 +317,32 @@ fn format_state(graph: &ModelGraph, state: &crate::model::State) -> String {
 }
 
 fn load_and_parse(path: &Path) -> Result<SourceFile> {
-    validate_tpl_extension(path)?;
-    let source = fs::read_to_string(path).map_err(|source| TplError::ReadFile {
+    validate_extension(path)?;
+    let source = fs::read_to_string(path).map_err(|source| CaelumError::ReadFile {
         path: path.to_path_buf(),
         source,
     })?;
     parse_source_file(path, &source)
 }
 
-fn validate_tpl_extension(path: &Path) -> Result<()> {
-    if path.extension().and_then(|ext| ext.to_str()) == Some("tpl") {
+fn validate_extension(path: &Path) -> Result<()> {
+    if path.extension().and_then(|ext| ext.to_str()) == Some("lum") {
         Ok(())
     } else {
-        Err(TplError::InvalidExtension {
+        Err(CaelumError::InvalidExtension {
             path: path.to_path_buf(),
         })
     }
 }
 
-fn exit_code(err: &TplError) -> u8 {
+fn exit_code(err: &CaelumError) -> u8 {
     match err {
-        TplError::Parse { .. } => 2,
-        TplError::Semantic { .. } => 3,
-        TplError::ReadFile { .. } | TplError::InvalidExtension { .. } | TplError::Import { .. } => {
+        CaelumError::Parse { .. } => 2,
+        CaelumError::Semantic { .. } => 3,
+        CaelumError::ReadFile { .. } | CaelumError::InvalidExtension { .. } | CaelumError::Import { .. } => {
             4
         }
-        TplError::Model { .. } => 5,
-        TplError::Unsupported { .. } => 6,
+        CaelumError::Model { .. } => 5,
+        CaelumError::Unsupported { .. } => 6,
     }
 }

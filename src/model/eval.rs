@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::diagnostics::{Result, TplError};
+use crate::diagnostics::{Result, CaelumError};
 use crate::syntax::{BinaryOp, Expr, UnaryOp};
 
 use super::state::{State, Value};
@@ -52,7 +52,7 @@ pub fn eval_expr(
 pub fn expect_bool(value: Value, context: &str) -> Result<bool> {
     match value {
         Value::Bool(value) => Ok(value),
-        other => Err(TplError::Model {
+        other => Err(CaelumError::Model {
             message: format!("{context} evaluated to non-boolean value `{other}`"),
         }),
     }
@@ -61,7 +61,7 @@ pub fn expect_bool(value: Value, context: &str) -> Result<bool> {
 pub fn expect_int(value: Value, context: &str) -> Result<i64> {
     match value {
         Value::Int(value) => Ok(value),
-        other => Err(TplError::Model {
+        other => Err(CaelumError::Model {
             message: format!("{context} evaluated to non-integer value `{other}`"),
         }),
     }
@@ -75,21 +75,21 @@ fn eval_name(name: &str, env: &EvalEnv, current: Option<&State>) -> Result<Value
         return Ok(value.clone());
     }
     if let Some(index) = env.variables.get(name) {
-        let state = current.ok_or_else(|| TplError::Model {
+        let state = current.ok_or_else(|| CaelumError::Model {
             message: format!("cannot read state variable `{name}` without current state"),
         })?;
         return Ok(state.values[*index].clone());
     }
-    Err(TplError::Model {
+    Err(CaelumError::Model {
         message: format!("unknown runtime name `{name}`"),
     })
 }
 
 fn eval_primed_name(name: &str, env: &EvalEnv, next: Option<&State>) -> Result<Value> {
-    let index = env.variables.get(name).ok_or_else(|| TplError::Model {
+    let index = env.variables.get(name).ok_or_else(|| CaelumError::Model {
         message: format!("unknown primed runtime name `{name}'`"),
     })?;
-    let state = next.ok_or_else(|| TplError::Model {
+    let state = next.ok_or_else(|| CaelumError::Model {
         message: format!("cannot read primed variable `{name}'` without next state"),
     })?;
     Ok(state.values[*index].clone())
@@ -99,7 +99,7 @@ fn eval_unary(op: UnaryOp, value: Value) -> Result<Value> {
     match op {
         UnaryOp::Not => Ok(Value::Bool(!expect_bool(value, "negation")?)),
         UnaryOp::Neg => Ok(Value::Int(-expect_int(value, "unary minus")?)),
-        UnaryOp::Always | UnaryOp::Eventually | UnaryOp::Next => Err(TplError::Model {
+        UnaryOp::Always | UnaryOp::Eventually | UnaryOp::Next => Err(CaelumError::Model {
             message: "temporal operator cannot be evaluated during model construction".to_owned(),
         }),
     }
@@ -120,7 +120,7 @@ fn eval_binary(op: BinaryOp, lhs: Value, rhs: Value) -> Result<Value> {
             let lhs = expect_int(lhs, "division lhs")?;
             let rhs = expect_int(rhs, "division rhs")?;
             if rhs == 0 {
-                return Err(TplError::Model {
+                return Err(CaelumError::Model {
                     message: "division by zero".to_owned(),
                 });
             }
@@ -130,7 +130,7 @@ fn eval_binary(op: BinaryOp, lhs: Value, rhs: Value) -> Result<Value> {
             let lhs = expect_int(lhs, "modulo lhs")?;
             let rhs = expect_int(rhs, "modulo rhs")?;
             if rhs == 0 {
-                return Err(TplError::Model {
+                return Err(CaelumError::Model {
                     message: "modulo by zero".to_owned(),
                 });
             }
@@ -162,7 +162,7 @@ fn eval_binary(op: BinaryOp, lhs: Value, rhs: Value) -> Result<Value> {
         BinaryOp::Iff => Ok(Value::Bool(
             expect_bool(lhs, "equivalence lhs")? == expect_bool(rhs, "equivalence rhs")?,
         )),
-        BinaryOp::Until => Err(TplError::Model {
+        BinaryOp::Until => Err(CaelumError::Model {
             message: "until cannot be evaluated during model construction".to_owned(),
         }),
     }
