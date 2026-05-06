@@ -465,4 +465,49 @@ mod tests {
 
         assert_eq!(report.status, CheckStatus::Pass);
     }
+
+    #[test]
+    fn bool_toggle_always_tautology_passes() {
+        let report = report(
+            r"
+            let flag: bool
+            init { flag = false }
+            transition toggle {
+                (flag = false and flag' = true) or (flag = true and flag' = false)
+            }
+            property always_bool { always (flag = true or flag = false) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Pass);
+        assert_eq!(report.properties[0].status, CheckStatus::Pass);
+        assert!(report.properties[0].counterexample.is_none());
+    }
+
+    #[test]
+    fn bool_toggle_always_invariant_fails_with_counterexample() {
+        let report = report(
+            r"
+            let flag: bool
+            init { flag = false }
+            transition toggle {
+                (flag = false and flag' = true) or (flag = true and flag' = false)
+            }
+            property always_false { always (flag = false) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Fail);
+        assert_eq!(report.properties[0].status, CheckStatus::Fail);
+        let cex = report.properties[0]
+            .counterexample
+            .as_ref()
+            .expect("failing property should have counterexample");
+        assert!(
+            !cex.states.is_empty(),
+            "counterexample should contain at least one state"
+        );
+    }
 }
