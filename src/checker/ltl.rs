@@ -1905,6 +1905,211 @@ mod tests {
     }
 
     #[test]
+    fn nondet_producer_consumer_liveness_and_until_under_nondeterminism() {
+        // Producer-consumer with buf: 0..3, ready: bool.
+        // 4 non-deterministic transitions with cross-variable guards.
+        // This tests temporal properties that distinguish universal vs
+        // existential path quantification under nondeterminism.
+        //
+        // Key insight: `always eventually P` requires ALL infinite paths
+        // to visit P infinitely often. With nondeterminism, a cycle that
+        // avoids P (even if other branches reach P) causes failure.
+        //
+        // Properties:
+        //   P1 (PASS): always (buf >= 0 and buf <= 3) -- domain invariant
+        //   P2 (PASS): always (buf = 3 and ready = true -> next (buf = 2))
+        //       At (3,true), only consume fires -> buf=2. Deterministic bottleneck.
+        //   P3 (FAIL): always eventually (buf = 0)
+        //       The cycle (2,F)->(3,F)->(3,T)->(2,F) avoids buf=0 forever.
+        //       This tests liveness failure due to avoidance cycles.
+        //   P4 (FAIL): always (ready = true and buf = 1 -> next (buf = 0))
+        //       At (1,true), produce can fire -> (2,true), so buf=0 not guaranteed.
+        //       Tests that `next` is universal over all nondeterministic successors.
+        //   P5 (PASS): always (buf = 3 and ready = false -> next (ready = true))
+        //       At (3,false), only prepare fires -> (3,true). Bottleneck forces ready.
+        //   P6 (FAIL): always (ready = true -> ready = true until buf = 3)
+        //       Consume and slack both clear ready before buf reaches 3.
+        //       (0,T) -> slack -> (0,F): ready gone, buf never reached 3.
+        //       This tests `until` under nondeterminism.
+        //   P7 (PASS): (buf < 3) until (buf = 3)
+        //       From init (0,F), produce can fire repeatedly: 0->1->2->3.
+        //       But wait -- from (0,F), prepare can also fire -> (0,T),
+        //       then slack -> (0,F), looping with buf always < 3 and never = 3.
+        //       Actually until requires ALL paths to reach the right side.
+        //       Since a path can loop at buf=0 via prepare/slack forever,
+        //       `until (buf=3)` fails. Let me reconsider...
+        //       Actually the checker treats `until` as CTL* universal: for all paths.
+        //       The prepare/slack loop at buf=0 avoids buf=3 forever while buf<3
+        //       holds, but `until` requires the right side to EVENTUALLY hold.
+        //       So this FAILS too. Let me fix:
+        //   P7 (FAIL): (buf < 3) until (buf = 3) -- fails because avoidance loop exists
+        //   P8 (PASS): eventually (buf = 3) on a deterministic-only system would pass,
+        //       but here with nondeterminism it should fail. Let me find a property
+        //       that actually passes involving `until`.
+        //   P8 (PASS): (buf >= 0) until (ready = true)
+        //       From init (0,F), prepare fires -> (0,T) where ready=true.
+        //       But other paths: (0,F)->produce->(1,F)->produce->(2,F)->produce
+        //       ->(3,F)->prepare->(3,T) where ready=true. All paths eventually
+        //       reach a state where ready=true because prepare is always eventually
+        //       enabled. BUT: actually from (0,F)->produce->(1,F)->produce->(2,F)
+        //       ->produce->(3,F), at (3,F) only prepare fires, giving ready=true.
+        //       From (1,F)->prepare->(1,T)->produce->(2,T)->produce->(3,T) already
+        //       has ready=true. The key is: can a path avoid ready=true forever?
+        //       NO -- because from any (buf,false) state, prepare is enabled, and
+        //       when buf<3, produce->...->buf=3 forces prepare. Wait, but (0,F)
+        //       can go to (1,F) then (2,F) then (3,F) then prepare (3,T)=ready.
+        //       Or (0,F)->(1,F)->(1,T)->consume->(0,F) loop: this hits ready=true at (1,T)!
+        //       Actually: every state either has ready=true already, or can reach
+        //       a state with ready=true. But `until` requires ALL paths to eventually
+        //       satisfy rhs. From (0,F), produce->(1,F), produce->(2,F), produce->(3,F),
+        //       prepare->(3,T) with ready=true. Or (0,F)->produce repeatedly reaches (3,F)
+        //       which must go to prepare. So on all paths, ready=true is eventually reached.
+        //       BUT: the universal `until` semantics: from the initial state, on ALL paths,
+        //       buf>=0 holds UNTIL ready=true. buf>=0 is always true (domain invariant),
+        //       so lhs never fails. The question is: does rhs eventually hold on all paths?
+        //       Since all paths eventually reach ready=true, and lhs holds throughout, PASS.
+        //       Wait, I need to be more careful. Actually, is there a path that avoids
+        //       ready=true? (0,F)->produce->(1,F)->produce->(2,F)->produce->(3,F)->prepare
+        //       ->(3,T) ready=true. Or (0,F)->produce->(1,F)->produce->(2,F)->prepare
+        //       ->(2,T) ready=true. Every path from a (buf,false) state must eventually
+        //       hit prepare (since buf can only grow to 3, then prepare is forced).
+        //       So YES, all paths reach ready=true. PASSES.
+        //       Hmm but actually: consider the checker's `until` implementation.
+        //       It uses a backward fixed point. A state is in `p until q` if either
+        //       q holds, or p holds and ALL successors are in the until set.
+        //       For (0,F): successors are (1,F) and (0,T). (0,T) has ready=true (in until set).
+        //       (1,F) successors: (2,F) and (1,T). (1,T) has ready=true. (2,F) successors:
+        //       (3,F) and (2,T). (2,T) has ready=true. (3,F): successor (3,T) ready=true.
+        //       So (3,F) is in until set (p holds, all successors in set). Then (2,F) is
+        //       in (p holds, both (3,F) and (2,T) in set). Then (1,F) in (both (2,F) and
+        //       (1,T) in set). Then (0,F) in (both (1,F) and (0,T) in set). PASSES.
+        let report = report(
+            r"
+            let buf: 0..3
+            let ready: bool
+            init { buf = 0 and ready = false }
+            transition produce {
+                buf < 3 and buf' = buf + 1 and ready' = ready
+            }
+            transition consume {
+                ready = true and buf > 0 and buf' = buf - 1 and ready' = false
+            }
+            transition prepare {
+                ready = false and ready' = true and buf' = buf
+            }
+            transition slack {
+                ready = true and buf = 0 and ready' = false and buf' = buf
+            }
+
+            property domain_bounds {
+                always (buf >= 0 and buf <= 3)
+            }
+            property bottleneck_consume {
+                always (buf = 3 and ready = true -> next (buf = 2))
+            }
+            property liveness_avoidance_cycle {
+                always eventually (buf = 0)
+            }
+            property next_not_universal_over_branches {
+                always (ready = true and buf = 1 -> next (buf = 0))
+            }
+            property bottleneck_forces_ready {
+                always (buf = 3 and ready = false -> next (ready = true))
+            }
+            property until_fails_under_nondet {
+                always (ready = true -> ready = true until buf = 3)
+            }
+            property until_passes_with_unavoidable_target {
+                (buf >= 0) until (ready = true)
+            }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.properties.len(), 7);
+
+        // P1: domain invariant always passes
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Pass,
+            "always (buf >= 0 and buf <= 3) should pass"
+        );
+        assert!(report.properties[0].counterexample.is_none());
+
+        // P2: bottleneck at (3,true) forces consume -> buf=2
+        assert_eq!(
+            report.properties[1].status,
+            CheckStatus::Pass,
+            "always (buf=3 and ready -> next(buf=2)) should pass: deterministic bottleneck"
+        );
+        assert!(report.properties[1].counterexample.is_none());
+
+        // P3: always eventually (buf=0) FAILS due to avoidance cycle
+        // The cycle (2,F)->(3,F)->(3,T)->(2,F) keeps buf in {2,3}, never 0.
+        // The counterexample is a path from the initial state to a state where
+        // `eventually (buf=0)` does not hold (the checker finds a state outside
+        // the sat set of `always eventually (buf=0)`).
+        assert_eq!(
+            report.properties[2].status,
+            CheckStatus::Fail,
+            "always eventually (buf=0) should fail: avoidance cycle through buf=2,3 exists"
+        );
+        let cex = report.properties[2]
+            .counterexample
+            .as_ref()
+            .expect("failing liveness property should have counterexample");
+        assert!(
+            !cex.states.is_empty(),
+            "counterexample for always-eventually should contain at least one state"
+        );
+        // The counterexample trace leads to a state from which `eventually (buf=0)`
+        // fails. The last state in the trace should be one where the avoidance cycle
+        // traps the system (buf in {2,3}).
+        let last_buf = match &cex.states.last().unwrap().values[0] {
+            Value::Int(v) => *v,
+            other => panic!("expected Int for buf, got {:?}", other),
+        };
+        assert!(
+            last_buf > 0,
+            "counterexample should end at a state where eventually(buf=0) fails, got buf={}",
+            last_buf
+        );
+
+        // P4: next is universal -- from (1,true), produce can fire -> (2,true)
+        assert_eq!(
+            report.properties[3].status,
+            CheckStatus::Fail,
+            "always (ready and buf=1 -> next(buf=0)) should fail: produce branch exists"
+        );
+        assert!(report.properties[3].counterexample.is_some());
+
+        // P5: bottleneck at (3,false) forces prepare -> ready=true
+        assert_eq!(
+            report.properties[4].status,
+            CheckStatus::Pass,
+            "always (buf=3 and not ready -> next(ready)) should pass: deterministic bottleneck"
+        );
+        assert!(report.properties[4].counterexample.is_none());
+
+        // P6: until fails because consume/slack clear ready before buf=3
+        assert_eq!(
+            report.properties[5].status,
+            CheckStatus::Fail,
+            "always (ready -> ready until buf=3) should fail: slack clears ready at buf=0"
+        );
+        assert!(report.properties[5].counterexample.is_some());
+
+        // P7: (buf >= 0) until (ready = true) passes because all paths
+        // eventually reach a state where ready=true (prepare is unavoidable)
+        assert_eq!(
+            report.properties[6].status,
+            CheckStatus::Pass,
+            "(buf >= 0) until (ready = true) should pass: all paths reach ready=true"
+        );
+        assert!(report.properties[6].counterexample.is_none());
+    }
+
+    #[test]
     fn enum_bool_cross_variable_properties() {
         // State machine: enum `state: {idle, running, done}` + bool `fail`.
         // Transitions:

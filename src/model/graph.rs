@@ -1766,6 +1766,116 @@ mod tests {
     }
 
     #[test]
+    fn nondet_producer_consumer_branching_and_bottleneck_states() {
+        // Producer-consumer with buf: 0..3, ready: bool.
+        // 4 non-deterministic transitions with cross-variable guards:
+        //   produce:  buf < 3 -> buf' = buf + 1, ready' = ready
+        //   consume:  ready and buf > 0 -> buf' = buf - 1, ready' = false
+        //   prepare:  not ready -> ready' = true, buf' = buf
+        //   slack:    ready and buf = 0 -> ready' = false, buf' = buf
+        //
+        // All 8 states (4 buf values * 2 ready values) are reachable.
+        // Some states have multiple successors (nondeterministic branching),
+        // while others have exactly 1 successor (deterministic bottlenecks).
+        //
+        // Successor counts per state:
+        //   (0,F): produce->(1,F), prepare->(0,T)                       = 2
+        //   (1,F): produce->(2,F), prepare->(1,T)                       = 2
+        //   (2,F): produce->(3,F), prepare->(2,T)                       = 2
+        //   (3,F): prepare->(3,T) only (produce blocked)                = 1 bottleneck
+        //   (0,T): produce->(1,T), slack->(0,F)                         = 2
+        //   (1,T): produce->(2,T), consume->(0,F)                       = 2
+        //   (2,T): produce->(3,T), consume->(1,F)                       = 2
+        //   (3,T): consume->(2,F) only (produce blocked, slack blocked) = 1 bottleneck
+        //
+        // Total edges: 2+2+2+1+2+2+2+1 = 14
+        let graph = graph(
+            r"
+            let buf: 0..3
+            let ready: bool
+            init { buf = 0 and ready = false }
+            transition produce {
+                buf < 3 and buf' = buf + 1 and ready' = ready
+            }
+            transition consume {
+                ready = true and buf > 0 and buf' = buf - 1 and ready' = false
+            }
+            transition prepare {
+                ready = false and ready' = true and buf' = buf
+            }
+            transition slack {
+                ready = true and buf = 0 and ready' = false and buf' = buf
+            }
+            property p { always (buf >= 0) }
+            ",
+        )
+        .expect("graph should build for producer-consumer system");
+
+        assert_eq!(graph.variables, vec!["buf", "ready"]);
+        // Full cross-product 4*2=8, all reachable
+        assert_eq!(
+            graph.states.len(),
+            8,
+            "all 8 cross-product states should be reachable"
+        );
+        assert_eq!(graph.initial_states.len(), 1);
+        // Total edges: 14 (6 states with 2 successors + 2 bottleneck states with 1)
+        assert_eq!(
+            graph.edge_count(),
+            14,
+            "14 edges: 6 states * 2 successors + 2 bottleneck states * 1 successor"
+        );
+
+        // Verify the two bottleneck states have exactly 1 successor
+        let find_state = |buf_val: i64, ready_val: bool| -> usize {
+            graph
+                .states
+                .iter()
+                .position(|s| s.values == vec![Value::Int(buf_val), Value::Bool(ready_val)])
+                .expect(&format!("state ({}, {}) should be reachable", buf_val, ready_val))
+        };
+
+        let s_3f = find_state(3, false);
+        assert_eq!(
+            graph.edges[s_3f].len(),
+            1,
+            "(3,false) is a bottleneck: only prepare is enabled"
+        );
+        // (3,false) -> (3,true) via prepare
+        let s_3t = find_state(3, true);
+        assert_eq!(graph.edges[s_3f], vec![s_3t]);
+
+        assert_eq!(
+            graph.edges[s_3t].len(),
+            1,
+            "(3,true) is a bottleneck: only consume is enabled"
+        );
+        // (3,true) -> (2,false) via consume
+        let s_2f = find_state(2, false);
+        assert_eq!(graph.edges[s_3t], vec![s_2f]);
+
+        // Verify nondeterministic states have exactly 2 successors
+        for buf_val in 0..3 {
+            let idx = find_state(buf_val, false);
+            assert_eq!(
+                graph.edges[idx].len(),
+                2,
+                "({},false) should have 2 successors (produce + prepare)",
+                buf_val
+            );
+        }
+        for buf_val in 0..3 {
+            let idx = find_state(buf_val, true);
+            assert_eq!(
+                graph.edges[idx].len(),
+                2,
+                "({},true) should have 2 successors",
+                buf_val
+            );
+        }
+    }
+
+    #[test]
     fn enforces_state_limit() {
         let file = parse_source(
             r"
