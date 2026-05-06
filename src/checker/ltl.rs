@@ -1463,4 +1463,135 @@ mod tests {
             "always_zero_fails result must be identical in full and subset reports"
         );
     }
+
+    #[test]
+    fn always_implication_next_on_deterministic_cycle() {
+        // 4-state cyclic counter: 0->1->2->3->0.
+        // `always (P -> next Q)` pattern on a deterministic system.
+        //
+        // Passing cases:
+        //   always (x = 0 -> next (x = 1))  — when x=0, next is always x=1
+        //   always (x = 3 -> next (x = 0))  — when x=3, next wraps to x=0
+        //   always (x < 3 -> next (x > 0))  — when x in {0,1,2}, next is {1,2,3}, all > 0
+        //
+        // Failing case:
+        //   always (x = 0 -> next (x = 2))  — when x=0, next is x=1, not x=2
+        let report = report(
+            r"
+            let x: 0..3
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 4 }
+            property p_impl_next_q_succ   { always (x = 0 -> next (x = 1)) }
+            property p_impl_next_q_wrap   { always (x = 3 -> next (x = 0)) }
+            property p_impl_next_q_range  { always (x < 3 -> next (x > 0)) }
+            property p_impl_next_q_fails  { always (x = 0 -> next (x = 2)) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Fail);
+        // x=0 -> next(x=1): true because deterministic successor of 0 is 1
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Pass,
+            "always (x=0 -> next(x=1)) should pass on cyclic counter"
+        );
+        assert!(report.properties[0].counterexample.is_none());
+        // x=3 -> next(x=0): true because 3 wraps to 0
+        assert_eq!(
+            report.properties[1].status,
+            CheckStatus::Pass,
+            "always (x=3 -> next(x=0)) should pass on cyclic counter"
+        );
+        assert!(report.properties[1].counterexample.is_none());
+        // x<3 -> next(x>0): true because successors of {0,1,2} are {1,2,3}
+        assert_eq!(
+            report.properties[2].status,
+            CheckStatus::Pass,
+            "always (x<3 -> next(x>0)) should pass on cyclic counter"
+        );
+        assert!(report.properties[2].counterexample.is_none());
+        // x=0 -> next(x=2): false because successor of 0 is 1, not 2
+        assert_eq!(
+            report.properties[3].status,
+            CheckStatus::Fail,
+            "always (x=0 -> next(x=2)) should fail on cyclic counter"
+        );
+        let cex = report.properties[3]
+            .counterexample
+            .as_ref()
+            .expect("failing always-implication-next property should have counterexample");
+        assert!(
+            !cex.states.is_empty(),
+            "counterexample should contain at least one state"
+        );
+    }
+
+    #[test]
+    fn always_implication_eventually_liveness_pattern() {
+        // 4-state cyclic counter: 0->1->2->3->0.
+        // `always (P -> eventually Q)` liveness pattern.
+        //
+        // Passing cases:
+        //   always (x = 2 -> eventually (x = 0))  — from x=2, the cycle reaches 0 (2->3->0)
+        //   always (x >= 0 -> eventually (x = 3))  — every state eventually reaches 3
+        //
+        // Failing case (add stutter at x=1 to break liveness):
+        //   On a system with stutter at x=1, `always (x = 0 -> eventually (x = 3))`
+        //   fails because from x=0 the system goes to x=1 and can stutter forever.
+        //
+        // First: purely deterministic cycle, both should pass.
+        let report_pass = report(
+            r"
+            let x: 0..3
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 4 }
+            property impl_ev_reach_zero  { always (x = 2 -> eventually (x = 0)) }
+            property impl_ev_reach_three { always (x >= 0 -> eventually (x = 3)) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report_pass.status, CheckStatus::Pass);
+        assert_eq!(
+            report_pass.properties[0].status,
+            CheckStatus::Pass,
+            "always (x=2 -> eventually(x=0)) should pass on pure cycle"
+        );
+        assert!(report_pass.properties[0].counterexample.is_none());
+        assert_eq!(
+            report_pass.properties[1].status,
+            CheckStatus::Pass,
+            "always (x>=0 -> eventually(x=3)) should pass on pure cycle"
+        );
+        assert!(report_pass.properties[1].counterexample.is_none());
+
+        // Second: add a stutter at x=1 to break liveness for reaching x=3.
+        // From x=0 -> x=1, and x=1 can stutter forever, so eventually(x=3) fails.
+        let report_fail = report(
+            r"
+            let x: 0..3
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 4 }
+            transition stutter { x = 1 and x' = 1 }
+            property impl_ev_broken { always (x = 0 -> eventually (x = 3)) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report_fail.status, CheckStatus::Fail);
+        assert_eq!(
+            report_fail.properties[0].status,
+            CheckStatus::Fail,
+            "always (x=0 -> eventually(x=3)) should fail when stutter at x=1 breaks liveness"
+        );
+        let cex = report_fail.properties[0]
+            .counterexample
+            .as_ref()
+            .expect("failing always-implication-eventually property should have counterexample");
+        assert!(
+            !cex.states.is_empty(),
+            "counterexample should contain at least one state"
+        );
+    }
 }
