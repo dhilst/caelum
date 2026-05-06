@@ -634,6 +634,60 @@ mod tests {
     }
 
     #[test]
+    fn arithmetic_guard_cycling_counter() {
+        // Transition with arithmetic comparisons as guards:
+        // When x + 1 < 4, increment x; otherwise wrap to 0.
+        // Produces a cycle: 0 -> 1 -> 2 -> 3 -> 0 with 4 reachable states.
+        let graph = graph(
+            r"
+            let x: 0..3
+            init { x = 0 }
+            transition step {
+                (x + 1 < 4 and x' = x + 1) or (x + 1 >= 4 and x' = 0)
+            }
+            property p { □ (x >= 0) }
+            ",
+        )
+        .expect("graph should build with arithmetic guards in transition");
+
+        assert_eq!(graph.states.len(), 4);
+        assert_eq!(graph.initial_states.len(), 1);
+        // Deterministic cycle: each state has exactly one successor
+        assert_eq!(graph.edge_count(), 4);
+        // Initial state should be x = 0
+        let init_idx = graph.initial_states[0];
+        assert_eq!(graph.states[init_idx].values, vec![Value::Int(0)]);
+    }
+
+    #[test]
+    fn multiplication_guard_limits_reachable_states() {
+        // Multiplication used as a guard: only increment while x * 2 <= 4,
+        // otherwise reset to 0. x * 2 <= 4 is true for x in {0, 1, 2}.
+        // Cycle: 0 -> 1 -> 2 -> 3 -> 0 (x=3: 3*2=6 > 4, so reset to 0).
+        // Reachable: {0, 1, 2, 3} = 4 states.
+        let graph = graph(
+            r"
+            let x: 0..5
+            init { x = 0 }
+            transition step {
+                (x * 2 <= 4 and x' = x + 1) or (x * 2 > 4 and x' = 0)
+            }
+            property p { □ (x >= 0) }
+            ",
+        )
+        .expect("graph should build with multiplication guard");
+
+        // x=0: 0*2=0<=4, go to 1
+        // x=1: 1*2=2<=4, go to 2
+        // x=2: 2*2=4<=4, go to 3
+        // x=3: 3*2=6>4, go to 0
+        // Reachable: {0, 1, 2, 3} = 4 states, not all 6 in domain
+        assert_eq!(graph.states.len(), 4);
+        assert_eq!(graph.initial_states.len(), 1);
+        assert_eq!(graph.edge_count(), 4);
+    }
+
+    #[test]
     fn enforces_state_limit() {
         let file = parse_source(
             r"
