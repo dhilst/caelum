@@ -2603,4 +2603,122 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn wrap_around_counter_overflow_detection_properties() {
+        // Wrap-around counter cnt: 0..3 with overflow flag ovf: bool.
+        // Two deterministic transitions:
+        //   step_normal: cnt < 3 => cnt' = cnt + 1, ovf' = false
+        //   step_wrap:   cnt = 3 => cnt' = 0, ovf' = true
+        //
+        // Cycle: (0,F)->(1,F)->(2,F)->(3,F)->(0,T)->(1,F)->...
+        //
+        // Properties tested:
+        //   1. ovf_implies_cnt_zero: always (ovf = true -> cnt = 0)
+        //      PASS -- ovf=true only occurs at (0,T)
+        //   2. ovf_recurs: always eventually (ovf = true)
+        //      PASS -- the 5-state cycle always reaches (0,T)
+        //   3. ovf_single_step: always (ovf = true -> next (ovf = false))
+        //      PASS -- from (0,T) the next state is (1,F) where ovf=false
+        //   4. ovf_implies_next_cnt_one: always (ovf = true -> next (cnt = 1))
+        //      PASS -- from (0,T), cnt increments to 1
+        //   5. ovf_always_false_fails: always (ovf = false)
+        //      FAIL -- ovf becomes true at wrap-around
+        //   6. cnt_never_zero_fails: always (cnt != 0)
+        //      FAIL -- cnt wraps to 0
+        let report = report(
+            r"
+            let cnt: 0..3
+            let ovf: bool
+            init { cnt = 0 and ovf = false }
+            transition step_normal {
+                cnt < 3 and cnt' = cnt + 1 and ovf' = false
+            }
+            transition step_wrap {
+                cnt = 3 and cnt' = 0 and ovf' = true
+            }
+            property ovf_implies_cnt_zero { always (ovf = true -> cnt = 0) }
+            property ovf_recurs { always eventually (ovf = true) }
+            property ovf_single_step { always (ovf = true -> next (ovf = false)) }
+            property ovf_implies_next_cnt_one { always (ovf = true -> next (cnt = 1)) }
+            property ovf_always_false_fails { always (ovf = false) }
+            property cnt_never_zero_fails { always (cnt != 0) }
+            ",
+        )
+        .expect("check should run");
+
+        // Overall status must be Fail (some properties fail)
+        assert_eq!(report.status, CheckStatus::Fail);
+        assert_eq!(report.properties.len(), 6, "should have exactly 6 properties");
+
+        // 1. always (ovf = true -> cnt = 0) PASS: ovf=true only at cnt=0
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Pass,
+            "ovf_implies_cnt_zero: overflow only occurs at counter zero"
+        );
+        assert!(report.properties[0].counterexample.is_none());
+
+        // 2. always eventually (ovf = true) PASS: deterministic cycle always wraps
+        assert_eq!(
+            report.properties[1].status,
+            CheckStatus::Pass,
+            "ovf_recurs: the cycle always eventually reaches the wrap point"
+        );
+        assert!(report.properties[1].counterexample.is_none());
+
+        // 3. always (ovf = true -> next (ovf = false)) PASS: ovf lasts exactly one step
+        assert_eq!(
+            report.properties[2].status,
+            CheckStatus::Pass,
+            "ovf_single_step: overflow flag is cleared on the very next step"
+        );
+        assert!(report.properties[2].counterexample.is_none());
+
+        // 4. always (ovf = true -> next (cnt = 1)) PASS: after wrap, cnt increments to 1
+        assert_eq!(
+            report.properties[3].status,
+            CheckStatus::Pass,
+            "ovf_implies_next_cnt_one: after overflow, counter advances to 1"
+        );
+        assert!(report.properties[3].counterexample.is_none());
+
+        // 5. always (ovf = false) FAIL: ovf becomes true at wrap
+        assert_eq!(
+            report.properties[4].status,
+            CheckStatus::Fail,
+            "ovf_always_false_fails: overflow flag eventually becomes true"
+        );
+        let cex_ovf = report.properties[4]
+            .counterexample
+            .as_ref()
+            .expect("failing ovf_always_false property should have counterexample");
+        assert!(
+            !cex_ovf.states.is_empty(),
+            "counterexample should contain at least one state"
+        );
+        // The counterexample trace should end with ovf = true
+        let last_ovf = match cex_ovf.states.last().unwrap().values[1] {
+            Value::Bool(v) => v,
+            ref other => panic!("expected Bool for ovf, got {:?}", other),
+        };
+        assert!(last_ovf, "counterexample should reach ovf = true");
+
+        // 6. always (cnt != 0) FAIL: cnt wraps to 0
+        assert_eq!(
+            report.properties[5].status,
+            CheckStatus::Fail,
+            "cnt_never_zero_fails: counter wraps back to zero"
+        );
+        let cex_cnt = report.properties[5]
+            .counterexample
+            .as_ref()
+            .expect("failing cnt_never_zero property should have counterexample");
+        // First state should have cnt = 0 (init starts at 0)
+        let first_cnt = match &cex_cnt.states[0].values[0] {
+            Value::Int(v) => *v,
+            other => panic!("expected Int for cnt, got {:?}", other),
+        };
+        assert_eq!(first_cnt, 0, "counterexample should start with cnt = 0");
+    }
 }

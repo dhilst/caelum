@@ -2210,4 +2210,122 @@ mod tests {
             "at cnt=4, rst=false, increment guard fails so only arm_reset is available"
         );
     }
+
+    #[test]
+    fn wrap_around_counter_with_overflow_flag_reachable_states() {
+        // Wrap-around counter cnt: 0..3 with overflow detection flag ovf: bool.
+        // Two deterministic transitions:
+        //   step_normal: cnt < 3 => cnt' = cnt + 1, ovf' = false
+        //   step_wrap:   cnt = 3 => cnt' = 0, ovf' = true
+        //
+        // Full cross-product: 4 (cnt) * 2 (ovf) = 8 states.
+        // Reachable states trace from (cnt=0, ovf=false):
+        //   (0,F) -> (1,F) -> (2,F) -> (3,F) -> (0,T) -> (1,F) -- cycle back
+        //
+        // Reachable: {(0,F), (1,F), (2,F), (3,F), (0,T)} = 5 states.
+        // Unreachable: (1,T), (2,T), (3,T) -- ovf=true only reachable at cnt=0.
+        // 5 edges (deterministic, each state has exactly one successor).
+        let graph = graph(
+            r"
+            let cnt: 0..3
+            let ovf: bool
+            init { cnt = 0 and ovf = false }
+            transition step_normal {
+                cnt < 3 and cnt' = cnt + 1 and ovf' = false
+            }
+            transition step_wrap {
+                cnt = 3 and cnt' = 0 and ovf' = true
+            }
+            ",
+        )
+        .expect("graph should build for wrap-around counter with overflow flag");
+
+        assert_eq!(graph.variables, vec!["cnt", "ovf"]);
+
+        // Full cross-product is 4 * 2 = 8, but only 5 are reachable
+        assert!(
+            graph.states.len() < 8,
+            "reachable states ({}) should be less than full cross-product (8)",
+            graph.states.len()
+        );
+        assert_eq!(
+            graph.states.len(),
+            5,
+            "exactly 5 states reachable (ovf=true only at cnt=0)"
+        );
+        assert_eq!(graph.initial_states.len(), 1);
+
+        // Deterministic: each state has exactly one successor
+        assert_eq!(
+            graph.edge_count(),
+            5,
+            "5 deterministic edges forming a single cycle"
+        );
+        for (i, successors) in graph.edges.iter().enumerate() {
+            assert_eq!(
+                successors.len(),
+                1,
+                "state {} ({:?}) should have exactly 1 successor",
+                i,
+                graph.states[i].values
+            );
+        }
+
+        // Verify initial state is (cnt=0, ovf=false)
+        let init_idx = graph.initial_states[0];
+        assert_eq!(
+            graph.states[init_idx].values,
+            vec![Value::Int(0), Value::Bool(false)]
+        );
+
+        // Verify ovf=true only appears with cnt=0
+        let reachable_with_ovf_true: Vec<_> = graph
+            .states
+            .iter()
+            .filter(|s| s.values[1] == Value::Bool(true))
+            .collect();
+        assert_eq!(
+            reachable_with_ovf_true.len(),
+            1,
+            "exactly one reachable state should have ovf=true"
+        );
+        assert_eq!(
+            reachable_with_ovf_true[0].values[0],
+            Value::Int(0),
+            "ovf=true should only appear at cnt=0"
+        );
+
+        // Verify unreachable states: (1,T), (2,T), (3,T) are not in the graph
+        for cnt_val in 1..=3i64 {
+            let has_ovf_at_cnt = graph
+                .states
+                .iter()
+                .any(|s| s.values == vec![Value::Int(cnt_val), Value::Bool(true)]);
+            assert!(
+                !has_ovf_at_cnt,
+                "(cnt={}, ovf=true) should be unreachable",
+                cnt_val
+            );
+        }
+
+        // Verify the cycle structure: (0,F)->(1,F)->(2,F)->(3,F)->(0,T)->(1,F)
+        let find = |cnt: i64, ovf: bool| -> usize {
+            graph
+                .states
+                .iter()
+                .position(|s| s.values == vec![Value::Int(cnt), Value::Bool(ovf)])
+                .unwrap_or_else(|| panic!("state (cnt={}, ovf={}) should exist", cnt, ovf))
+        };
+        let idx_0f = find(0, false);
+        let idx_1f = find(1, false);
+        let idx_2f = find(2, false);
+        let idx_3f = find(3, false);
+        let idx_0t = find(0, true);
+
+        assert_eq!(graph.edges[idx_0f], vec![idx_1f], "(0,F) -> (1,F)");
+        assert_eq!(graph.edges[idx_1f], vec![idx_2f], "(1,F) -> (2,F)");
+        assert_eq!(graph.edges[idx_2f], vec![idx_3f], "(2,F) -> (3,F)");
+        assert_eq!(graph.edges[idx_3f], vec![idx_0t], "(3,F) -> (0,T)");
+        assert_eq!(graph.edges[idx_0t], vec![idx_1f], "(0,T) -> (1,F)");
+    }
 }
