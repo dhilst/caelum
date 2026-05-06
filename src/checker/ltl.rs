@@ -865,6 +865,85 @@ mod tests {
     }
 
     #[test]
+    fn all_comparison_operators_on_counter() {
+        // Counter cycles 0..4 mod 5. Test all 6 comparison operators against
+        // the value 4 (the max). Expected results:
+        //   always (x >= 0) => PASS (all values are 0..4)
+        //   always (x <= 4) => PASS (all values are 0..4)
+        //   always (x < 4)  => FAIL (x reaches 4)
+        //   always (x > 0)  => FAIL (x starts at 0)
+        //   always (x = 0)  => FAIL (x leaves 0)
+        //   always (x != 4) => FAIL (x reaches 4)
+        let report = report(
+            r"
+            let x: 0..4
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 5 }
+            property gte_zero   { always (x >= 0) }
+            property lte_four   { always (x <= 4) }
+            property lt_four    { always (x < 4) }
+            property gt_zero    { always (x > 0) }
+            property eq_zero    { always (x = 0) }
+            property neq_four   { always (x != 4) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Fail);
+        // Properties that should pass
+        assert_eq!(report.properties[0].status, CheckStatus::Pass, "x >= 0 should pass");
+        assert_eq!(report.properties[1].status, CheckStatus::Pass, "x <= 4 should pass");
+        // Properties that should fail
+        assert_eq!(report.properties[2].status, CheckStatus::Fail, "x < 4 should fail");
+        assert_eq!(report.properties[3].status, CheckStatus::Fail, "x > 0 should fail");
+        assert_eq!(report.properties[4].status, CheckStatus::Fail, "x = 0 should fail");
+        assert_eq!(report.properties[5].status, CheckStatus::Fail, "x != 4 should fail");
+        // Failing properties should have counterexamples
+        for i in 2..=5 {
+            assert!(
+                report.properties[i].counterexample.is_some(),
+                "property {} should have a counterexample",
+                report.properties[i].name
+            );
+        }
+    }
+
+    #[test]
+    fn not_equal_operator_in_property() {
+        // A two-state system toggling between 0 and 1.
+        // `always (x != 2)` should pass because x never reaches 2.
+        // `always (x != 0)` should fail because x starts at 0.
+        let report = report(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition toggle {
+                (x = 0 and x' = 1) or (x = 1 and x' = 0)
+            }
+            property never_two  { always (x != 2) }
+            property never_zero { always (x != 0) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Fail);
+        // x never reaches 2 in the reachable states (only 0 and 1 reachable)
+        assert_eq!(report.properties[0].status, CheckStatus::Pass, "x != 2 should pass");
+        // x starts at 0, so x != 0 immediately fails
+        assert_eq!(report.properties[1].status, CheckStatus::Fail, "x != 0 should fail");
+        let cex = report.properties[1]
+            .counterexample
+            .as_ref()
+            .expect("failing x != 0 property should have counterexample");
+        // First state in counterexample must be x = 0
+        let first_val = match &cex.states[0].values[0] {
+            Value::Int(v) => *v,
+            other => panic!("expected Int, got {:?}", other),
+        };
+        assert_eq!(first_val, 0, "counterexample should start with x = 0");
+    }
+
+    #[test]
     fn eventually_always_fails_when_variable_leaves_permanently() {
         // Same absorbing system: 0->1, 1->2, 2->2.
         // x leaves 0 at the very first step and never returns,
