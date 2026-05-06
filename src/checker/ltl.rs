@@ -711,6 +711,61 @@ mod tests {
     }
 
     #[test]
+    fn always_eventually_passes_when_target_unavoidable() {
+        // Non-deterministic system: x cycles 0->1->2->0 with a stutter at x=1.
+        // Graph: 3 states, edges: 0->1, 1->2, 2->0, 1->1.
+        // `always eventually (x = 1)` passes because every infinite path must
+        // eventually reach x=1 — the cycle always passes through 1, and the
+        // stutter at 1 stays at 1.
+        let report = report(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 3 }
+            transition stutter { x = 1 and x' = 1 }
+            property ae_one { always eventually (x = 1) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Pass);
+        assert_eq!(report.properties[0].status, CheckStatus::Pass);
+        assert!(report.properties[0].counterexample.is_none());
+    }
+
+    #[test]
+    fn always_eventually_fails_when_stutter_avoids_target() {
+        // Same non-deterministic system as above.
+        // `always eventually (x = 0)` fails because the stutter at x=1 creates
+        // a path where x=1 loops forever, so not all states satisfy
+        // `eventually (x = 0)`. The checker finds a state outside the sat set
+        // of `always eventually (x = 0)` and produces a counterexample trace.
+        let report = report(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 3 }
+            transition stutter { x = 1 and x' = 1 }
+            property ae_zero { always eventually (x = 0) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Fail);
+        assert_eq!(report.properties[0].status, CheckStatus::Fail);
+        let cex = report.properties[0]
+            .counterexample
+            .as_ref()
+            .expect("failing always-eventually property should have counterexample");
+        // The counterexample should contain at least one state and lead to a
+        // state from which `eventually (x = 0)` does not hold.
+        assert!(
+            !cex.states.is_empty(),
+            "counterexample should contain at least one state"
+        );
+    }
+
+    #[test]
     fn until_deterministic_counter_passes() {
         // x cycles 0,1,2,3,0,1,... — (x < 3) holds at every step until x = 3 is reached.
         let report = report(
