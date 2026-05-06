@@ -11,8 +11,8 @@ Installation
 
 .. code-block:: bash
 
-   git clone https://github.com/dhilst/tlpengine.git
-   cd tlpengine
+   git clone https://github.com/dhilst/caelum.git
+   cd caelum
    cargo build --release
 
 The binary is at ``target/release/caelum``.

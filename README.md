@@ -99,7 +99,7 @@ cargo test           # run all tests
 
 ## Documentation
 
-Full documentation is available at [https://dhilst.github.io/tlpengine/](https://dhilst.github.io/tlpengine/).
+Full documentation is available at [https://dhilst.github.io/caelum/](https://dhilst.github.io/caelum/).
 
 ## License
 
