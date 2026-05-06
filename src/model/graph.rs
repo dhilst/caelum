@@ -724,6 +724,74 @@ mod tests {
     }
 
     #[test]
+    fn bool_and_int_range_toggle_and_increment() {
+        // Bool `flag` toggles every step; int `count` (0..3) increments only
+        // when flag is true (guarded by the bool), wrapping via mod 4.
+        //
+        // Trace from (flag=false, count=0):
+        //   (F,0) -> (T,0) -> (F,1) -> (T,1) -> (F,2) -> (T,2) -> (F,3) -> (T,3) -> (F,0)
+        //
+        // All 2*4 = 8 states are reachable, forming a single deterministic cycle.
+        let graph = graph(
+            r"
+            let flag: bool
+            let count: 0..3
+            init { flag = false and count = 0 }
+            transition step {
+                (flag = false and flag' = true and count' = count) or
+                (flag = true and flag' = false and count' = (count + 1) mod 4)
+            }
+            ",
+        )
+        .expect("graph should build for bool + int toggle-and-increment system");
+
+        assert_eq!(graph.variables, vec!["flag", "count"]);
+        // Full domain is 2 * 4 = 8 states, all reachable
+        assert_eq!(graph.states.len(), 8, "all 8 bool*int states should be reachable");
+        assert_eq!(graph.initial_states.len(), 1);
+        // Deterministic cycle: each state has exactly one successor
+        assert_eq!(graph.edge_count(), 8);
+    }
+
+    #[test]
+    fn bool_guard_controls_int_transitions() {
+        // Bool `enabled` gates whether int `count` (0..2) can advance.
+        // When disabled, the system enables but count stays put.
+        // When enabled and count < 2, count increments.
+        // When enabled and count reaches 2, the system disables and resets count.
+        //
+        // Trace from (enabled=false, count=0):
+        //   (F,0) -> (T,0) -> (T,1) -> (T,2) -> (F,0) -- cycle
+        //
+        // Reachable: 4 states, 4 edges. States (F,1) and (F,2) are never reached
+        // because the guard prevents count from being nonzero while disabled.
+        let graph = graph(
+            r"
+            let enabled: bool
+            let count: 0..2
+            init { enabled = false and count = 0 }
+            transition enable {
+                enabled = false and enabled' = true and count' = count
+            }
+            transition advance {
+                enabled = true and count < 2 and enabled' = true and count' = count + 1
+            }
+            transition reset {
+                enabled = true and count = 2 and enabled' = false and count' = 0
+            }
+            ",
+        )
+        .expect("graph should build for bool-guarded int transitions");
+
+        assert_eq!(graph.variables, vec!["enabled", "count"]);
+        // Full domain is 2 * 3 = 6 states, but only 4 are reachable
+        assert_eq!(graph.states.len(), 4, "bool guard should restrict reachable states to 4");
+        assert_eq!(graph.initial_states.len(), 1);
+        // Deterministic cycle: each state has exactly one successor
+        assert_eq!(graph.edge_count(), 4);
+    }
+
+    #[test]
     fn enforces_state_limit() {
         let file = parse_source(
             r"
