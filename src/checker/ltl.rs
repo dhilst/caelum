@@ -977,4 +977,88 @@ mod tests {
             "counterexample should contain at least one state"
         );
     }
+
+    #[test]
+    fn always_implication_tautology_passes_and_false_consequent_fails() {
+        // Counter cycles 0..2 mod 3.
+        // `always (x >= 0 -> x <= 2)` is a tautology over the domain, so it passes.
+        // `always (x >= 1 -> x = 0)` fails because when x=1 the consequent x=0 is false.
+        let report = report(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 3 }
+            property impl_tautology { always (x >= 0 -> x <= 2) }
+            property impl_false_consequent { always (x >= 1 -> x = 0) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Fail);
+        // Tautology: x >= 0 -> x <= 2 always holds in domain 0..2
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Pass,
+            "tautological implication should pass"
+        );
+        assert!(report.properties[0].counterexample.is_none());
+        // False consequent: when x = 1, x >= 1 is true but x = 0 is false
+        assert_eq!(
+            report.properties[1].status,
+            CheckStatus::Fail,
+            "implication with false consequent should fail"
+        );
+        let cex = report.properties[1]
+            .counterexample
+            .as_ref()
+            .expect("failing implication property should have counterexample");
+        assert!(
+            !cex.states.is_empty(),
+            "counterexample should contain at least one state"
+        );
+    }
+
+    #[test]
+    fn always_implication_composed_with_next() {
+        // Absorbing system: 0->1, 1->2, 2->2.
+        // `always (x = 2 -> next (x = 2))` passes because at x=2 the system
+        // absorbs (next state is also x=2), and at x=0,1 the antecedent is
+        // false (vacuous truth).
+        // `always (x = 2 -> next (x = 0))` fails because at x=2 the system
+        // absorbs to x=2, not x=0.
+        let report = report(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition inc { x < 2 and x' = x + 1 }
+            transition absorb { x = 2 and x' = 2 }
+            property impl_next_absorb_passes { always (x = 2 -> next (x = 2)) }
+            property impl_next_absorb_fails { always (x = 2 -> next (x = 0)) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Fail);
+        // x = 2 -> next(x = 2) holds: vacuously true at x=0,1 and true at x=2
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Pass,
+            "implication with next on absorbing state should pass"
+        );
+        assert!(report.properties[0].counterexample.is_none());
+        // x = 2 -> next(x = 0) fails because x=2 absorbs to x=2, not x=0
+        assert_eq!(
+            report.properties[1].status,
+            CheckStatus::Fail,
+            "implication with false next consequent should fail"
+        );
+        let cex = report.properties[1]
+            .counterexample
+            .as_ref()
+            .expect("failing implication-next property should have counterexample");
+        assert!(
+            !cex.states.is_empty(),
+            "counterexample should contain at least one state"
+        );
+    }
 }
