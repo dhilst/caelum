@@ -613,4 +613,57 @@ mod tests {
             .collect();
         assert_eq!(values, vec!["idle", "running", "done"]);
     }
+
+    #[test]
+    fn eventually_passes_when_initial_state_satisfies() {
+        let report = report(
+            r"
+            let x: 0..3
+            init { x = 0 }
+            transition inc { x < 3 and x' = x + 1 }
+            transition stutter { x' = x }
+            property reaches_zero { eventually (x = 0) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Pass);
+        assert_eq!(report.properties[0].status, CheckStatus::Pass);
+        assert!(report.properties[0].counterexample.is_none());
+    }
+
+    #[test]
+    fn eventually_fails_with_lasso_when_stutter_avoids_target() {
+        let report = report(
+            r"
+            let x: 0..3
+            init { x = 0 }
+            transition inc { x < 3 and x' = x + 1 }
+            transition stutter { x' = x }
+            property reaches_three { eventually (x = 3) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Fail);
+        assert_eq!(report.properties[0].status, CheckStatus::Fail);
+        let cex = report.properties[0]
+            .counterexample
+            .as_ref()
+            .expect("failing property should have counterexample");
+        // Lasso counterexample: a path that loops without ever reaching x=3.
+        // cycle_start indicates where the loop begins.
+        assert!(
+            cex.cycle_start.is_some(),
+            "counterexample should be a lasso (cycle_start present)"
+        );
+        // Every state in the counterexample must have x != 3
+        for state in &cex.states {
+            let val = match &state.values[0] {
+                Value::Int(v) => *v,
+                other => panic!("expected Int, got {:?}", other),
+            };
+            assert_ne!(val, 3, "counterexample should never reach x = 3");
+        }
+    }
 }
