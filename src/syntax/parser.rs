@@ -410,6 +410,40 @@ mod tests {
     }
 
     #[test]
+    fn ascii_next_parens_disambiguated_from_grouping() {
+        // `()` as next operator followed by a parenthesized expression
+        let expr = first_property_expr("property p { () (x = 1) }");
+        let Expr::Unary { op, expr: inner } = &expr else {
+            panic!("expected Unary, got {expr:?}");
+        };
+        assert_eq!(*op, UnaryOp::Next);
+        // The inner expression should be `x = 1` (the grouping parens are stripped)
+        let Expr::Binary { op: inner_op, lhs, .. } = inner.as_ref() else {
+            panic!("expected Binary inside Next, got {inner:?}");
+        };
+        assert_eq!(*inner_op, BinaryOp::Eq);
+        assert!(matches!(lhs.as_ref(), Expr::Name(n) if n == "x"));
+    }
+
+    #[test]
+    fn all_ascii_operators_parse_together() {
+        // Combines every ASCII operator form in one spec:
+        //   [] (always), <> (eventually), () (next),
+        //   ~ (not), /\ (and), \/ (or), U (until)
+        let source = r"
+            property p { [] <> () ~ a /\ b \/ c U d }
+        ";
+        let expr = first_property_expr(source);
+        // Until has the lowest precedence, so it becomes the outermost node.
+        // LHS = `[] <> () ~ a /\ b \/ c`, RHS = `d`
+        let Expr::Binary { op, rhs, .. } = &expr else {
+            panic!("expected Binary(Until) at top level, got {expr:?}");
+        };
+        assert_eq!(*op, BinaryOp::Until);
+        assert!(matches!(rhs.as_ref(), Expr::Name(n) if n == "d"));
+    }
+
+    #[test]
     fn parses_declarations_and_primed_transition_variables() {
         let file = parse_source(
             r#"
