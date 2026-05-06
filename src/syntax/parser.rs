@@ -444,6 +444,56 @@ mod tests {
     }
 
     #[test]
+    fn unicode_element_of_type_sep_and_until_in_full_spec() {
+        // End-to-end: `∈` as the type separator for VarDecl with IntRange,
+        // and `𝒰` as the Until operator inside a property.
+        let file = parse_source(
+            r#"
+            let x ∈ 0..2
+            init { x = 0 }
+            transition step { x' = x + 1 }
+            property reaches_max { (x < 2) 𝒰 (x = 2) }
+            "#,
+        )
+        .expect("spec with ∈ and 𝒰 should parse");
+
+        // The first item must be a VarDecl with an IntRange domain.
+        let Item::Var(ref var) = file.items[0] else {
+            panic!("expected first item to be Var, got {:?}", file.items[0]);
+        };
+        assert_eq!(var.name, "x");
+        assert_eq!(
+            var.domain,
+            Domain::IntRange {
+                start: DomainBound::Int(0),
+                end: DomainBound::Int(2),
+            }
+        );
+
+        // The property expression must be a Binary Until node.
+        let Item::Property(ref prop) = file.items[3] else {
+            panic!("expected fourth item to be Property, got {:?}", file.items[3]);
+        };
+        assert_eq!(prop.name, "reaches_max");
+        let Expr::Binary { op, ref lhs, ref rhs } = prop.expr else {
+            panic!("expected Binary expr in property, got {:?}", prop.expr);
+        };
+        assert_eq!(op, BinaryOp::Until);
+
+        // LHS: x < 2
+        let Expr::Binary { op: lhs_op, .. } = lhs.as_ref() else {
+            panic!("expected Binary in LHS of Until, got {:?}", lhs);
+        };
+        assert_eq!(*lhs_op, BinaryOp::Lt);
+
+        // RHS: x = 2
+        let Expr::Binary { op: rhs_op, .. } = rhs.as_ref() else {
+            panic!("expected Binary in RHS of Until, got {:?}", rhs);
+        };
+        assert_eq!(*rhs_op, BinaryOp::Eq);
+    }
+
+    #[test]
     fn parses_declarations_and_primed_transition_variables() {
         let file = parse_source(
             r#"
