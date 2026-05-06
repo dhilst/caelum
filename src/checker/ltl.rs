@@ -1206,6 +1206,74 @@ mod tests {
     }
 
     #[test]
+    fn bool_excluded_middle_tautology_passes() {
+        // Excluded middle: `always (b or not b)` is a tautology for any boolean
+        // variable. On a toggle system where b alternates true/false, every state
+        // satisfies `b or not b`.
+        let report = report(
+            r"
+            let b: bool
+            init { b = false }
+            transition toggle {
+                (b = false and b' = true) or (b = true and b' = false)
+            }
+            property excluded_middle { always (b = true or not (b = true)) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Pass);
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Pass,
+            "excluded middle tautology should always pass"
+        );
+        assert!(report.properties[0].counterexample.is_none());
+    }
+
+    #[test]
+    fn always_not_bool_fails_on_toggle() {
+        // `always (not b)` must fail on a toggle system where b becomes true.
+        // b starts false and toggles to true, so `not (b = true)` does not hold
+        // in all states. The counterexample should reach a state where b = true.
+        let report = report(
+            r"
+            let b: bool
+            init { b = false }
+            transition toggle {
+                (b = false and b' = true) or (b = true and b' = false)
+            }
+            property always_not_b { always (not (b = true)) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Fail);
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Fail,
+            "always (not b) should fail when b toggles to true"
+        );
+        let cex = report.properties[0]
+            .counterexample
+            .as_ref()
+            .expect("failing always-not-b property should have counterexample");
+        assert!(
+            !cex.states.is_empty(),
+            "counterexample should contain at least one state"
+        );
+        // The last state in the counterexample should have b = true
+        let last_b = match cex.states.last().unwrap().values[0] {
+            Value::Bool(v) => v,
+            ref other => panic!("expected Bool, got {:?}", other),
+        };
+        assert!(
+            last_b,
+            "counterexample should reach a state where b = true"
+        );
+    }
+
+    #[test]
     fn always_not_fails_when_predicate_holds_in_some_state() {
         // Single negation: `always (not P)` fails when P holds in at least one
         // reachable state. Counter cycles 0..2 mod 3.
