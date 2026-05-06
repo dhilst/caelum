@@ -434,6 +434,32 @@ mod tests {
     }
 
     #[test]
+    fn constants_in_init_and_transition_arithmetic() {
+        // Constants used in init expression and transition modular arithmetic.
+        // const step = 2, const max = 6 => domain 0..6 has 7 values.
+        // init: x = step => x starts at 2.
+        // transition: x' = (x + step) mod (max + 1) => 2, 4, 6, 1, 3, 5, 0, 2, ...
+        // All 7 values are reachable.
+        let graph = graph(
+            r"
+            const step = 2
+            const max = 6
+            let x: 0..max
+            init { x = step }
+            transition advance { x' = (x + step) mod (max + 1) }
+            property p { □ (x >= 0) }
+            ",
+        )
+        .expect("graph should build with constants in transition arithmetic");
+
+        // Domain 0..6 = 7 values, all reachable via the mod-7 cycle with step 2
+        assert_eq!(graph.states.len(), 7);
+        assert_eq!(graph.initial_states.len(), 1);
+        // Each state has exactly one successor (deterministic)
+        assert_eq!(graph.edge_count(), 7);
+    }
+
+    #[test]
     fn enforces_state_limit() {
         let file = parse_source(
             r"

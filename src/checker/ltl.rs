@@ -837,6 +837,34 @@ mod tests {
     }
 
     #[test]
+    fn constants_in_property_expressions() {
+        // Constants used in property expressions: the property references `max`
+        // directly. The invariant `x < max + 1` (i.e. x < 7) should pass since
+        // domain is 0..6. The property `x < max` (i.e. x < 6) should fail
+        // because x reaches 6.
+        let report = report(
+            r"
+            const step = 2
+            const max = 6
+            let x: 0..max
+            init { x = step }
+            transition advance { x' = (x + step) mod (max + 1) }
+            property bounded { □ (x < max + 1) }
+            property strict_bound { □ (x < max) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Fail);
+        // bounded: x < 7 always holds for domain 0..6
+        assert_eq!(report.properties[0].status, CheckStatus::Pass);
+        assert!(report.properties[0].counterexample.is_none());
+        // strict_bound: x < 6 fails because x reaches 6
+        assert_eq!(report.properties[1].status, CheckStatus::Fail);
+        assert!(report.properties[1].counterexample.is_some());
+    }
+
+    #[test]
     fn eventually_always_fails_when_variable_leaves_permanently() {
         // Same absorbing system: 0->1, 1->2, 2->2.
         // x leaves 0 at the very first step and never returns,
