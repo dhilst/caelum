@@ -21,6 +21,7 @@ Features
    :maxdepth: 2
 
    getting-started
+   tutorial
    language-guide
    cli-reference
    examples

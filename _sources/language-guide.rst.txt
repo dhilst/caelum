@@ -28,6 +28,37 @@ Named integer constants:
 
    const max = 3
 
+Types
+-----
+
+The ``type`` keyword declares a named type that can be shared by multiple
+variables:
+
+.. code-block:: text
+
+   type Color = enum { red, green, yellow }
+   type Counter = 0..max
+
+The right-hand side can be an ``enum { ... }``, an integer range, or ``bool``.
+Named types must be declared before use (no forward references).
+Type names share the global namespace with variables, constants, and enum
+variants — duplicates are rejected.
+
+When an enum type is declared with ``type``, its variants are registered once
+and shared by all variables of that type:
+
+.. code-block:: text
+
+   type Color = enum { red, green, yellow }
+   let a ∈ Color
+   let b ∈ Color
+
+   // Both variables can use the same variant names:
+   init { a = red ∧ b = green }
+
+   // Cross-variable comparison works because they share the same type:
+   property same_color { □ (a = b → a = red) }
+
 Variables
 ---------
 
@@ -37,9 +68,11 @@ Variables are declared with a name and a finite domain:
 
    let x ∈ 0..3                          // integer range
    let flag : bool                        // boolean
-   let mode : enum { idle, busy, done }   // enumeration
+   let mode : enum { idle, busy, done }   // inline enumeration
+   let light ∈ Color                      // named type (see above)
 
 The type separator can be ``:`` or ``∈``.
+The domain can be an inline definition or a reference to a named type.
 
 Init Blocks
 -----------
