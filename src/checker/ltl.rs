@@ -2721,4 +2721,85 @@ mod tests {
         };
         assert_eq!(first_cnt, 0, "counterexample should start with cnt = 0");
     }
+
+    #[test]
+    fn high_water_mark_ltl_properties() {
+        // High-water mark system: val (0..3) with hwm (0..3) tracking the max.
+        // Four transitions: inc_new_max, inc_below, dec, stay.
+        //
+        // Properties tested:
+        //   1. hwm_geq_val:   always (hwm >= val)              -- PASS (invariant)
+        //   2. hwm_monotone:  always (hwm >= val -> next (hwm >= val))
+        //                     -- PASS (hwm never decreases, val can decrease)
+        //   3. hwm_reaches_3: eventually (hwm = 3)
+        //                     -- FAIL (stay transition creates self-loops at
+        //                        any state, so a path can stutter forever at
+        //                        (0,0) without ever increasing hwm)
+        let report = report(
+            r"
+            let val: 0..3
+            let hwm: 0..3
+            init { val = 0 ∧ hwm = 0 }
+            transition inc_new_max {
+                val < 3 ∧ val + 1 > hwm ∧ val' = val + 1 ∧ hwm' = val + 1
+            }
+            transition inc_below {
+                val < 3 ∧ val + 1 <= hwm ∧ val' = val + 1 ∧ hwm' = hwm
+            }
+            transition dec {
+                val > 0 ∧ val' = val - 1 ∧ hwm' = hwm
+            }
+            transition stay {
+                val' = val ∧ hwm' = hwm
+            }
+            property hwm_geq_val { □ (hwm >= val) }
+            property hwm_monotone { □ (hwm >= val -> ◯ (hwm >= val)) }
+            property hwm_reaches_3 { ◇ (hwm = 3) }
+            ",
+        )
+        .expect("check should run for high-water mark system");
+
+        // 1. hwm >= val always holds (structural invariant)
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Pass,
+            "hwm_geq_val: high-water mark should always be >= val"
+        );
+        assert!(report.properties[0].counterexample.is_none());
+
+        // 2. hwm monotonicity: if hwm >= val now, then hwm >= val in the next state
+        assert_eq!(
+            report.properties[1].status,
+            CheckStatus::Pass,
+            "hwm_monotone: hwm >= val should be preserved across transitions"
+        );
+        assert!(report.properties[1].counterexample.is_none());
+
+        // 3. eventually (hwm = 3) FAILS because stay creates self-loops
+        assert_eq!(
+            report.properties[2].status,
+            CheckStatus::Fail,
+            "hwm_reaches_3: should fail because stay transition allows infinite stutter"
+        );
+        let cex = report.properties[2]
+            .counterexample
+            .as_ref()
+            .expect("failing hwm_reaches_3 property should have counterexample");
+        assert!(
+            !cex.states.is_empty(),
+            "counterexample should contain at least one state"
+        );
+        // Every state in the counterexample should have hwm < 3 (it never reaches 3)
+        for state in &cex.states {
+            let hwm = match &state.values[1] {
+                Value::Int(v) => *v,
+                other => panic!("expected Int for hwm, got {:?}", other),
+            };
+            assert!(
+                hwm < 3,
+                "counterexample trace for hwm_reaches_3 should never have hwm = 3, but found hwm = {}",
+                hwm
+            );
+        }
+    }
 }

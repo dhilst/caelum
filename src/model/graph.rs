@@ -2328,4 +2328,101 @@ mod tests {
         assert_eq!(graph.edges[idx_3f], vec![idx_0t], "(3,F) -> (0,T)");
         assert_eq!(graph.edges[idx_0t], vec![idx_1f], "(0,T) -> (1,F)");
     }
+
+    #[test]
+    fn high_water_mark_reachable_states_and_monotonicity() {
+        // Two variables: val (0..3) and hwm (0..3) tracking the high-water mark.
+        // Four non-deterministic transitions:
+        //   inc_new_max: val < 3, val increments, val+1 > hwm => hwm rises too
+        //   inc_below:   val < 3, val increments, val+1 <= hwm => hwm stays
+        //   dec:         val > 0, val decrements, hwm stays
+        //   stay:        val and hwm both unchanged
+        //
+        // Invariant maintained by construction: hwm >= val at all times.
+        // Reachable states: only the 10 pairs (val, hwm) where hwm >= val,
+        // out of 4*4 = 16 total in the cross-product.
+        let graph = graph(
+            r"
+            let val: 0..3
+            let hwm: 0..3
+            init { val = 0 ∧ hwm = 0 }
+            transition inc_new_max {
+                val < 3 ∧ val + 1 > hwm ∧ val' = val + 1 ∧ hwm' = val + 1
+            }
+            transition inc_below {
+                val < 3 ∧ val + 1 <= hwm ∧ val' = val + 1 ∧ hwm' = hwm
+            }
+            transition dec {
+                val > 0 ∧ val' = val - 1 ∧ hwm' = hwm
+            }
+            transition stay {
+                val' = val ∧ hwm' = hwm
+            }
+            property inv { □ (hwm >= val) }
+            ",
+        )
+        .expect("graph should build for high-water mark system");
+
+        assert_eq!(graph.variables, vec!["val", "hwm"]);
+
+        // Only 10 of 16 cross-product states are reachable (those with hwm >= val)
+        assert_eq!(
+            graph.states.len(),
+            10,
+            "exactly 10 states (hwm >= val pairs) should be reachable"
+        );
+
+        // Verify every reachable state satisfies hwm >= val
+        for state in &graph.states {
+            let val = match &state.values[0] {
+                Value::Int(v) => *v,
+                other => panic!("expected Int for val, got {:?}", other),
+            };
+            let hwm = match &state.values[1] {
+                Value::Int(v) => *v,
+                other => panic!("expected Int for hwm, got {:?}", other),
+            };
+            assert!(
+                hwm >= val,
+                "invariant violated: state (val={}, hwm={}) has hwm < val",
+                val, hwm
+            );
+        }
+
+        // Verify hwm monotonicity structurally: no edge decreases hwm
+        for (src_idx, successors) in graph.edges.iter().enumerate() {
+            let src_hwm = match &graph.states[src_idx].values[1] {
+                Value::Int(v) => *v,
+                other => panic!("expected Int for hwm, got {:?}", other),
+            };
+            for &dst_idx in successors {
+                let dst_hwm = match &graph.states[dst_idx].values[1] {
+                    Value::Int(v) => *v,
+                    other => panic!("expected Int for hwm, got {:?}", other),
+                };
+                assert!(
+                    dst_hwm >= src_hwm,
+                    "hwm monotonicity violated: edge from (val={}, hwm={}) to (val={}, hwm={})",
+                    match &graph.states[src_idx].values[0] { Value::Int(v) => v, _ => unreachable!() },
+                    src_hwm,
+                    match &graph.states[dst_idx].values[0] { Value::Int(v) => v, _ => unreachable!() },
+                    dst_hwm,
+                );
+            }
+        }
+
+        // Verify the absorbing max state (val=3, hwm=3) has a self-loop
+        let max_idx = graph
+            .states
+            .iter()
+            .position(|s| s.values == vec![Value::Int(3), Value::Int(3)])
+            .expect("state (val=3, hwm=3) should be reachable");
+        assert!(
+            graph.edges[max_idx].contains(&max_idx),
+            "(val=3, hwm=3) should have a self-loop via the stay transition"
+        );
+
+        // 25 edges total (verified from spec analysis)
+        assert_eq!(graph.edge_count(), 25, "high-water mark system should have 25 edges");
+    }
 }
