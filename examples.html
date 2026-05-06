@@ -314,8 +314,8 @@ property iff_example {
 </div>
 <p>Both properties pass: when <code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">=</span> <span class="pre">0</span></code>, the next state always has <code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">=</span> <span class="pre">1</span></code>, and vice versa.</p>
 </section>
-<section id="traffic-light-intersection">
-<h2>Traffic Light Intersection<a class="headerlink" href="#traffic-light-intersection" title="Link to this heading">¶</a></h2>
+<section id="crossroad-traffic-light">
+<h2>Crossroad Traffic Light<a class="headerlink" href="#crossroad-traffic-light" title="Link to this heading">¶</a></h2>
 <p>Two traffic lights sharing a named <code class="docutils literal notranslate"><span class="pre">Color</span></code> type, with mutual exclusion
 and fairness properties. This example demonstrates the <code class="docutils literal notranslate"><span class="pre">type</span></code> keyword
 for reusable enum domains.</p>
@@ -369,7 +369,7 @@ invalid both_green {
 <li><p><code class="docutils literal notranslate"><span class="pre">both_green</span></code> (invalid): Claims both lights are eventually green at once — correctly
 fails because the transitions prevent it.</p></li>
 </ul>
-<p>See <code class="docutils literal notranslate"><span class="pre">examples/traffic_light_intersection.lum</span></code> for the full specification with
+<p>See <code class="docutils literal notranslate"><span class="pre">examples/crossroad_traffic_light.lum</span></code> for the full specification with
 all safety, liveness, and fairness properties. The <a class="reference internal" href="tutorial.html"><span class="doc">Tutorial</span></a> walks through
 building this example step by step.</p>
 </section>
@@ -434,7 +434,7 @@ building this example step by step.</p>
 <li><a class="reference internal" href="#counter">Counter</a></li>
 <li><a class="reference internal" href="#failing-invariant">Failing Invariant</a></li>
 <li><a class="reference internal" href="#implication-and-equivalence">Implication and Equivalence</a></li>
-<li><a class="reference internal" href="#traffic-light-intersection">Traffic Light Intersection</a></li>
+<li><a class="reference internal" href="#crossroad-traffic-light">Crossroad Traffic Light</a></li>
 </ul>
 </li>
 </ul>

@@ -237,7 +237,7 @@
         <article role="main" id="furo-main-content">
           <section id="tutorial">
 <h1>Tutorial<a class="headerlink" href="#tutorial" title="Link to this heading">¶</a></h1>
-<p>This tutorial walks through building a traffic light intersection controller
+<p>This tutorial walks through building a crossroad traffic light controller
 step by step, introducing each language feature as it becomes needed.</p>
 <p>Before we start writing specifications, let’s get familiar with the symbols
 Caelum uses. If you’ve never worked with formal logic notation, this section
@@ -396,8 +396,11 @@ keeps happening forever — the system never permanently stops reaching P.</p>
 </section>
 <section id="step-1-a-single-traffic-light">
 <h2>Step 1: A Single Traffic Light<a class="headerlink" href="#step-1-a-single-traffic-light" title="Link to this heading">¶</a></h2>
-<p>Start with one traffic light that cycles through red, green, and yellow.
-Declare a named type so the colours are self-documenting:</p>
+<p>We are going to specify a crossroad traffic light system with two traffic
+lights: <code class="docutils literal notranslate"><span class="pre">traf1</span></code> and <code class="docutils literal notranslate"><span class="pre">traf2</span></code>. The full specification is available at
+<a class="reference external" href="https://github.com/dhilst/caelum/blob/master/examples/crossroad_traffic_light.lum">examples/crossroad_traffic_light.lum</a>.</p>
+<p>Let’s start simple with just one light that cycles through red, green, and
+yellow. Declare a named type so the colours are self-documenting:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>type Color = enum { red, green, yellow }
 
 let light ∈ Color
@@ -575,12 +578,12 @@ system prevents that, the property fails — and Caelum reports PASS.</p>
 </section>
 <section id="running-the-full-specification">
 <h2>Running the Full Specification<a class="headerlink" href="#running-the-full-specification" title="Link to this heading">¶</a></h2>
-<p>Save the complete specification as <code class="docutils literal notranslate"><span class="pre">intersection.lum</span></code> and run:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>caelum<span class="w"> </span>intersection.lum
+<p>Save the complete specification as <code class="docutils literal notranslate"><span class="pre">crossroad.lum</span></code> and run:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>caelum<span class="w"> </span>crossroad.lum
 </pre></div>
 </div>
 <p>You should see all properties pass. The full specification is available at
-<code class="docutils literal notranslate"><span class="pre">examples/traffic_light_intersection.lum</span></code> in the repository.</p>
+<code class="docutils literal notranslate"><span class="pre">examples/crossroad_traffic_light.lum</span></code> in the repository.</p>
 </section>
 <section id="summary-of-language-features-used">
 <h2>Summary of Language Features Used<a class="headerlink" href="#summary-of-language-features-used" title="Link to this heading">¶</a></h2>
