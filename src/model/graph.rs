@@ -502,6 +502,52 @@ mod tests {
     }
 
     #[test]
+    fn div_halving_counter_reachable_states() {
+        // Counter starts at 8, halves each step via integer division.
+        // Trajectory: 8 -> 4 -> 2 -> 1 -> 0 -> 0 (self-loop)
+        // Reachable states: {8, 4, 2, 1, 0} = 5 states
+        let graph = graph(
+            r"
+            let x: 0..8
+            init { x = 8 }
+            transition halve { x' = x / 2 }
+            property p { □ (x >= 0) }
+            ",
+        )
+        .expect("graph should build with division in transition");
+
+        assert_eq!(graph.states.len(), 5);
+        assert_eq!(graph.initial_states.len(), 1);
+        // Each state has exactly one successor (deterministic)
+        assert_eq!(graph.edge_count(), 5);
+        // Initial state should be x = 8
+        let init_idx = graph.initial_states[0];
+        assert_eq!(graph.states[init_idx].values, vec![Value::Int(8)]);
+    }
+
+    #[test]
+    fn div_in_init_expression() {
+        // Division used directly in init: x = 10 / 3 evaluates to 3 (integer division)
+        let graph = graph(
+            r"
+            let x: 0..5
+            init { x = 10 / 3 }
+            transition step { x' = (x + 1) mod 6 }
+            property p { □ (x >= 0) }
+            ",
+        )
+        .expect("graph should build with division in init expression");
+
+        // 10 / 3 = 3 (integer division), cycling 3 -> 4 -> 5 -> 0 -> 1 -> 2 -> 3 ...
+        // All 6 values reachable
+        assert_eq!(graph.states.len(), 6);
+        assert_eq!(graph.initial_states.len(), 1);
+        // The initial state should have x = 3
+        let init_idx = graph.initial_states[0];
+        assert_eq!(graph.states[init_idx].values, vec![Value::Int(3)]);
+    }
+
+    #[test]
     fn enforces_state_limit() {
         let file = parse_source(
             r"
