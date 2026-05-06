@@ -1,7 +1,7 @@
 Tutorial
 ========
 
-This tutorial walks through building a traffic light intersection controller
+This tutorial walks through building a crossroad traffic light controller
 step by step, introducing each language feature as it becomes needed.
 
 Before we start writing specifications, let's get familiar with the symbols
@@ -169,8 +169,12 @@ You can freely mix Unicode and ASCII in the same file. The formatter
 Step 1: A Single Traffic Light
 ------------------------------
 
-Start with one traffic light that cycles through red, green, and yellow.
-Declare a named type so the colours are self-documenting:
+We are going to specify a crossroad traffic light system with two traffic
+lights: ``traf1`` and ``traf2``. The full specification is available at
+`examples/crossroad_traffic_light.lum <https://github.com/dhilst/caelum/blob/master/examples/crossroad_traffic_light.lum>`_.
+
+Let's start simple with just one light that cycles through red, green, and
+yellow. Declare a named type so the colours are self-documenting:
 
 .. code-block:: text
 
@@ -381,14 +385,14 @@ system prevents that, the property fails — and Caelum reports PASS.
 Running the Full Specification
 ------------------------------
 
-Save the complete specification as ``intersection.lum`` and run:
+Save the complete specification as ``crossroad.lum`` and run:
 
 .. code-block:: bash
 
-   caelum intersection.lum
+   caelum crossroad.lum
 
 You should see all properties pass. The full specification is available at
-``examples/traffic_light_intersection.lum`` in the repository.
+``examples/crossroad_traffic_light.lum`` in the repository.
 
 Summary of Language Features Used
 ----------------------------------

@@ -1,4 +1,4 @@
-module examples.intersection
+module examples.crossroad_traffic_light
 
 type Color = enum { red, green, yellow }
 

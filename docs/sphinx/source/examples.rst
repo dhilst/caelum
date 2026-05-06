@@ -86,8 +86,8 @@ Implication and Equivalence
 
 Both properties pass: when ``x = 0``, the next state always has ``x = 1``, and vice versa.
 
-Traffic Light Intersection
---------------------------
+Crossroad Traffic Light
+-----------------------
 
 Two traffic lights sharing a named ``Color`` type, with mutual exclusion
 and fairness properties. This example demonstrates the ``type`` keyword
@@ -144,6 +144,6 @@ for reusable enum domains.
 - ``both_green`` (invalid): Claims both lights are eventually green at once — correctly
   fails because the transitions prevent it.
 
-See ``examples/traffic_light_intersection.lum`` for the full specification with
+See ``examples/crossroad_traffic_light.lum`` for the full specification with
 all safety, liveness, and fairness properties. The :doc:`tutorial` walks through
 building this example step by step.
