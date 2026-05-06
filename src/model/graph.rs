@@ -397,6 +397,43 @@ mod tests {
     }
 
     #[test]
+    fn constants_as_domain_bounds() {
+        let graph = graph(
+            r"
+            const lo = 0
+            const hi = 3
+            let x: lo..hi
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 4 }
+            property p { □ (x >= 0) }
+            ",
+        )
+        .expect("graph should build with constant domain bounds");
+
+        // lo..hi = 0..3 means values 0, 1, 2, 3 => 4 states
+        assert_eq!(graph.states.len(), 4);
+        assert_eq!(graph.initial_states.len(), 1);
+    }
+
+    #[test]
+    fn constant_expression_as_domain_bound() {
+        let graph = graph(
+            r"
+            const n = 2 + 1
+            let x: 0..n
+            init { x = 0 }
+            transition step { x' = (x + 1) mod (n + 1) }
+            property p { □ (x >= 0) }
+            ",
+        )
+        .expect("graph should build with constant expression as domain bound");
+
+        // n = 2 + 1 = 3, so 0..3 means values 0, 1, 2, 3 => 4 states
+        assert_eq!(graph.states.len(), 4);
+        assert_eq!(graph.initial_states.len(), 1);
+    }
+
+    #[test]
     fn enforces_state_limit() {
         let file = parse_source(
             r"
