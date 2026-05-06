@@ -895,6 +895,104 @@ mod tests {
     }
 
     #[test]
+    fn enum_int_nondet_mode_switching_reachability_and_edges() {
+        // Three-mode controller (counting/paused/reset) driving a counter 0..3.
+        // Non-deterministic mode transitions: from any state, the system can switch
+        // to any mode. Counter behavior depends on the NEXT mode:
+        //   counting: counter increments (saturates at 3)
+        //   paused:   counter stays unchanged
+        //   reset:    counter goes to 0
+        //
+        // Not all 12 cross-product states are reachable because:
+        //   - reset always forces counter'=0, so (reset, 1), (reset, 2), (reset, 3) unreachable
+        //   - counting always increments, so (counting, 0) unreachable (can't arrive at
+        //     counting with counter=0; the minimum is 1 from counter=0 + 1)
+        //
+        // Reachable states (8 of 12):
+        //   (paused, 0), (counting, 1), (reset, 0),
+        //   (paused, 1), (counting, 2), (paused, 2),
+        //   (counting, 3), (paused, 3)
+        //
+        // Edge count analysis -- each state has 3 successors (one per mode), though
+        // some successors may coincide (e.g. pause and reset from counter=0 both give
+        // counter'=0). Distinct successor counts:
+        //   (paused, 0):   -> (counting,1), (paused,0), (reset,0) = 3 distinct
+        //   (counting, 1): -> (counting,2), (paused,1), (reset,0) = 3 distinct
+        //   (reset, 0):    -> (counting,1), (paused,0), (reset,0) = 3 distinct
+        //   (paused, 1):   -> (counting,2), (paused,1), (reset,0) = 3 distinct
+        //   (counting, 2): -> (counting,3), (paused,2), (reset,0) = 3 distinct
+        //   (paused, 2):   -> (counting,3), (paused,2), (reset,0) = 3 distinct
+        //   (counting, 3): -> (counting,3), (paused,3), (reset,0) = 3 distinct
+        //   (paused, 3):   -> (counting,3), (paused,3), (reset,0) = 2 distinct!
+        //     Wait: (counting,3) from saturation and (paused,3) from stay, and (reset,0).
+        //     These are all distinct. Actually (counting,3) != (paused,3), so 3 distinct.
+        //
+        // Total edges: 8 * 3 = 24. But duplicates in the successor list don't get
+        // collapsed by the model builder -- it checks each candidate state against
+        // all transitions. Actually, the builder iterates all_states and checks if
+        // any transition matches, producing unique successors. So 24 edges.
+        let graph = graph(
+            r"
+            let mode: enum { counting, paused, reset }
+            let counter: 0..3
+            init { mode = paused and counter = 0 }
+            transition count_tick {
+                mode' = counting and (
+                    (counter < 3 and counter' = counter + 1) or
+                    (counter = 3 and counter' = 3)
+                )
+            }
+            transition pause_tick {
+                mode' = paused and counter' = counter
+            }
+            transition reset_tick {
+                mode' = reset and counter' = 0
+            }
+            ",
+        )
+        .expect("graph should build for enum + int non-deterministic controller");
+
+        assert_eq!(graph.variables, vec!["mode", "counter"]);
+        // Full cross-product is 3 * 4 = 12, but only 8 are reachable
+        assert_eq!(
+            graph.states.len(),
+            8,
+            "8 of 12 cross-product states should be reachable"
+        );
+        assert_eq!(graph.initial_states.len(), 1);
+        // Each of the 8 reachable states has exactly 3 distinct successors
+        assert_eq!(
+            graph.edge_count(),
+            24,
+            "8 states * 3 successors each = 24 edges"
+        );
+        // Verify the initial state is (paused, 0)
+        let init_idx = graph.initial_states[0];
+        assert_eq!(
+            graph.states[init_idx].values,
+            vec![Value::Enum("paused".to_string()), Value::Int(0)]
+        );
+        // Verify unreachable states: collect all reachable (mode, counter) pairs
+        let reachable: std::collections::HashSet<_> = graph
+            .states
+            .iter()
+            .map(|s| (&s.values[0], &s.values[1]))
+            .collect();
+        // (counting, 0) should be unreachable: counting always increments
+        assert!(
+            !reachable.contains(&(&Value::Enum("counting".to_string()), &Value::Int(0))),
+            "(counting, 0) should be unreachable"
+        );
+        // (reset, 1..3) should be unreachable: reset always zeroes counter
+        for c in 1..=3 {
+            assert!(
+                !reachable.contains(&(&Value::Enum("reset".to_string()), &Value::Int(c))),
+                "(reset, {c}) should be unreachable"
+            );
+        }
+    }
+
+    #[test]
     fn enforces_state_limit() {
         let file = parse_source(
             r"

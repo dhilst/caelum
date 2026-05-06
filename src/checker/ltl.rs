@@ -1781,6 +1781,130 @@ mod tests {
     }
 
     #[test]
+    fn enum_int_mode_dependent_counter_properties() {
+        // Three-mode controller (counting/paused/reset) with counter 0..3.
+        // Non-deterministic mode switching with saturation arithmetic.
+        //
+        // Counter behavior depends on the NEXT mode:
+        //   counting: counter increments (saturates at 3)
+        //   paused:   counter stays unchanged
+        //   reset:    counter goes to 0
+        //
+        // Reachable states (8 of 12): (paused,0), (counting,1), (reset,0),
+        //   (paused,1), (counting,2), (paused,2), (counting,3), (paused,3).
+        //
+        // Key: `next(P)` requires P to hold in ALL successors. Since every state
+        // has 3 successors (one per mode), `next(P)` is very restrictive.
+        //
+        // Properties:
+        //   P1: always (counter = 3 -> next (counter = 3 or counter = 0))
+        //       PASSES: from any state with counter=3, successors are:
+        //         counting: saturates at 3, paused: stays 3, reset: goes to 0.
+        //         All satisfy counter=3 or counter=0.
+        //   P2: always (mode = counting -> counter > 0)
+        //       PASSES: counting mode always has counter >= 1 because counting
+        //       increments from the previous value. (counting,0) is unreachable.
+        //   P3: always (mode = reset -> counter = 0)
+        //       PASSES: reset always forces counter=0. Only (reset,0) is reachable.
+        //   P4: always (mode = counting -> next (counter > 0))
+        //       FAILS: from (counting, c), one successor is (reset, 0) where
+        //       counter=0. The `next` operator requires ALL successors to satisfy.
+        //   P5: always (counter = 0 -> eventually (counter = 3))
+        //       FAILS: from counter=0 the system can loop through reset mode
+        //       keeping counter=0 forever.
+        //   P6: always (counter >= 0 and counter <= 3)
+        //       PASSES: trivially true within domain bounds.
+        let report = report(
+            r"
+            let mode: enum { counting, paused, reset }
+            let counter: 0..3
+            init { mode = paused and counter = 0 }
+            transition count_tick {
+                mode' = counting and (
+                    (counter < 3 and counter' = counter + 1) or
+                    (counter = 3 and counter' = 3)
+                )
+            }
+            transition pause_tick {
+                mode' = paused and counter' = counter
+            }
+            transition reset_tick {
+                mode' = reset and counter' = 0
+            }
+            property max_counter_next_bounded {
+                always (counter = 3 -> next (counter = 3 or counter = 0))
+            }
+            property counting_means_positive {
+                always (mode = counting -> counter > 0)
+            }
+            property reset_means_zero {
+                always (mode = reset -> counter = 0)
+            }
+            property counting_next_positive_fails {
+                always (mode = counting -> next (counter > 0))
+            }
+            property zero_eventually_max_fails {
+                always (counter = 0 -> eventually (counter = 3))
+            }
+            property domain_bounds_hold {
+                always (counter >= 0 and counter <= 3)
+            }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.properties.len(), 6);
+
+        // P1: counter=3 -> next(counter=3 or counter=0)
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Pass,
+            "always (counter=3 -> next(counter=3 or counter=0)) should pass"
+        );
+        assert!(report.properties[0].counterexample.is_none());
+
+        // P2: counting mode always has positive counter
+        assert_eq!(
+            report.properties[1].status,
+            CheckStatus::Pass,
+            "always (mode=counting -> counter>0) should pass: (counting,0) unreachable"
+        );
+        assert!(report.properties[1].counterexample.is_none());
+
+        // P3: reset mode always has counter=0
+        assert_eq!(
+            report.properties[2].status,
+            CheckStatus::Pass,
+            "always (mode=reset -> counter=0) should pass: only (reset,0) is reachable"
+        );
+        assert!(report.properties[2].counterexample.is_none());
+
+        // P4: counting -> next(counter > 0) fails because reset successor has counter=0
+        assert_eq!(
+            report.properties[3].status,
+            CheckStatus::Fail,
+            "counting -> next(counter > 0) should fail: reset successor has counter=0"
+        );
+        assert!(report.properties[3].counterexample.is_some());
+
+        // P5: counter=0 -> eventually(counter=3) fails because reset loop traps at 0
+        assert_eq!(
+            report.properties[4].status,
+            CheckStatus::Fail,
+            "counter=0 -> eventually(counter=3) should fail: reset loop avoids 3"
+        );
+        assert!(report.properties[4].counterexample.is_some());
+
+        // P6: domain bounds always hold
+        assert_eq!(
+            report.properties[5].status,
+            CheckStatus::Pass,
+            "always (counter >= 0 and counter <= 3) should pass"
+        );
+        assert!(report.properties[5].counterexample.is_none());
+    }
+
+    #[test]
     fn enum_bool_cross_variable_properties() {
         // State machine: enum `state: {idle, running, done}` + bool `fail`.
         // Transitions:
