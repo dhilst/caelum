@@ -1238,6 +1238,180 @@ mod tests {
     }
 
     #[test]
+    fn frame_condition_preserves_variable_while_other_changes() {
+        // Two int variables x: 0..2 and y: 0..1. Two transitions:
+        //   inc_x: increments x mod 3, frames y via y' = y
+        //   flip_y: toggles y (0->1 or 1->0), frames x via x' = x
+        //
+        // Starting from (x=0, y=0):
+        //   (0,0) -> (1,0) via inc_x  [y framed at 0]
+        //   (0,0) -> (0,1) via flip_y [x framed at 0]
+        //   (1,0) -> (2,0) via inc_x  [y framed at 0]
+        //   (1,0) -> (1,1) via flip_y [x framed at 1]
+        //   (2,0) -> (0,0) via inc_x  [y framed at 0]
+        //   (2,0) -> (2,1) via flip_y [x framed at 2]
+        //   (0,1) -> (1,1) via inc_x  [y framed at 1]
+        //   (0,1) -> (0,0) via flip_y [x framed at 0]
+        //   (1,1) -> (2,1) via inc_x  [y framed at 1]
+        //   (1,1) -> (1,0) via flip_y [x framed at 1]
+        //   (2,1) -> (0,1) via inc_x  [y framed at 1]
+        //   (2,1) -> (2,0) via flip_y [x framed at 2]
+        //
+        // All 3*2 = 6 states reachable, each with exactly 2 successors = 12 edges.
+        // Crucially, frame conditions prevent diagonal jumps like (0,0) -> (1,1)
+        // where both variables change simultaneously.
+        let graph = graph(
+            r"
+            let x: 0..2
+            let y: 0..1
+            init { x = 0 and y = 0 }
+            transition inc_x { x' = (x + 1) mod 3 and y' = y }
+            transition flip_y {
+                x' = x and
+                ((y = 0 and y' = 1) or (y = 1 and y' = 0))
+            }
+            property p { □ (x >= 0 and y >= 0) }
+            ",
+        )
+        .expect("graph should build for frame condition test");
+
+        assert_eq!(graph.variables, vec!["x", "y"]);
+        // All 6 cross-product states are reachable
+        assert_eq!(graph.states.len(), 6, "all 3*2 states reachable");
+        assert_eq!(graph.initial_states.len(), 1);
+        // Each state has exactly 2 successors (one per transition)
+        assert_eq!(
+            graph.edge_count(),
+            12,
+            "6 states * 2 successors each = 12 edges"
+        );
+        // Verify per-state: every state has exactly 2 successors, confirming
+        // that frame conditions prevent both variables from changing at once
+        for (i, successors) in graph.edges.iter().enumerate() {
+            assert_eq!(
+                successors.len(),
+                2,
+                "state {} should have exactly 2 successors (frame prevents simultaneous change)",
+                i
+            );
+        }
+        // Verify that no edge changes both variables simultaneously:
+        // for each (state, successor) pair, at most one variable differs
+        for (i, successors) in graph.edges.iter().enumerate() {
+            let current = &graph.states[i];
+            for &succ_idx in successors {
+                let next = &graph.states[succ_idx];
+                let x_changed = current.values[0] != next.values[0];
+                let y_changed = current.values[1] != next.values[1];
+                assert!(
+                    !(x_changed && y_changed),
+                    "frame condition violated: both x and y changed from {:?} to {:?}",
+                    current.values,
+                    next.values
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn frame_condition_restricts_successors() {
+        // Compare a model WITH frame conditions to one WITHOUT, confirming
+        // that frames reduce both reachable states and successors.
+        //
+        // Model: x: 0..1, y: 0..1. Single transition that increments x mod 2.
+        // Init: x = 0 and y = 0 (single initial state).
+        //
+        //   WITH frame:    x' = (x + 1) mod 2 and y' = y
+        //     From (0,0): y' = y = 0, so only successor is (1,0).
+        //     From (1,0): y' = y = 0, so only successor is (0,0).
+        //     Reachable: {(0,0), (1,0)} = 2 states. y is locked at 0 forever.
+        //     2 edges total (each state has 1 successor).
+        //
+        //   WITHOUT frame: x' = (x + 1) mod 2 (y unconstrained in next state)
+        //     From (0,0): x'=1, y' free -> (1,0) and (1,1).
+        //     From (1,0): x'=0, y' free -> (0,0) and (0,1).
+        //     From (1,1): x'=0, y' free -> (0,0) and (0,1).
+        //     From (0,1): x'=1, y' free -> (1,0) and (1,1).
+        //     Reachable: all 4 states. 8 edges total (each has 2 successors).
+        //
+        // The frame condition y' = y restricts reachability from 4 to 2 states
+        // and edges from 8 to 2.
+        let graph_framed = graph(
+            r"
+            let x: 0..1
+            let y: 0..1
+            init { x = 0 and y = 0 }
+            transition step { x' = (x + 1) mod 2 and y' = y }
+            ",
+        )
+        .expect("framed graph should build");
+
+        let graph_unframed = graph(
+            r"
+            let x: 0..1
+            let y: 0..1
+            init { x = 0 and y = 0 }
+            transition step { x' = (x + 1) mod 2 }
+            ",
+        )
+        .expect("unframed graph should build");
+
+        // Framed: y' = y locks y at 0, so only 2 of 4 states are reachable
+        assert_eq!(
+            graph_framed.states.len(),
+            2,
+            "frame y' = y restricts reachable states to 2 (y locked at 0)"
+        );
+        // Unframed: y unconstrained, all 4 states reachable
+        assert_eq!(
+            graph_unframed.states.len(),
+            4,
+            "without frame, all 4 cross-product states are reachable"
+        );
+
+        // Framed: 2 states, each with 1 successor = 2 edges
+        assert_eq!(
+            graph_framed.edge_count(),
+            2,
+            "frame condition restricts to 2 edges (1 per state)"
+        );
+        // Unframed: 4 states, each with 2 successors = 8 edges
+        assert_eq!(
+            graph_unframed.edge_count(),
+            8,
+            "without frame, 4 states * 2 successors = 8 edges"
+        );
+
+        // Verify y never changes in the framed model
+        for (i, successors) in graph_framed.edges.iter().enumerate() {
+            assert_eq!(successors.len(), 1, "framed state {} has 1 successor", i);
+            let current = &graph_framed.states[i];
+            let next = &graph_framed.states[successors[0]];
+            assert_eq!(
+                current.values[1], next.values[1],
+                "frame condition y' = y violated: y changed from {:?} to {:?}",
+                current.values[1], next.values[1]
+            );
+        }
+
+        // Verify the unframed model allows y to change
+        let mut y_changed_count = 0;
+        for (i, successors) in graph_unframed.edges.iter().enumerate() {
+            let current = &graph_unframed.states[i];
+            for &succ_idx in successors {
+                let next = &graph_unframed.states[succ_idx];
+                if current.values[1] != next.values[1] {
+                    y_changed_count += 1;
+                }
+            }
+        }
+        assert!(
+            y_changed_count > 0,
+            "without frame, at least some transitions should change y"
+        );
+    }
+
+    #[test]
     fn enforces_state_limit() {
         let file = parse_source(
             r"
