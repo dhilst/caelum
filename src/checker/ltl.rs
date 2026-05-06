@@ -1019,6 +1019,102 @@ mod tests {
     }
 
     #[test]
+    fn always_biconditional_equivalent_predicates_pass_and_non_equivalent_fail() {
+        // Counter cycles 0..2 mod 3.
+        // `always (x = 0 <-> x < 1)` passes: both sides are true exactly when x=0.
+        // `always (x = 0 <-> x = 1)` fails: at x=0 the lhs is true but rhs is false.
+        let report = report(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 3 }
+            property iff_equivalent { always (x = 0 <-> x < 1) }
+            property iff_non_equivalent { always (x = 0 <-> x = 1) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Fail);
+        // x = 0 and x < 1 are equivalent over the domain 0..2
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Pass,
+            "biconditional between equivalent predicates should pass"
+        );
+        assert!(report.properties[0].counterexample.is_none());
+        // x = 0 and x = 1 are not equivalent
+        assert_eq!(
+            report.properties[1].status,
+            CheckStatus::Fail,
+            "biconditional between non-equivalent predicates should fail"
+        );
+        let cex = report.properties[1]
+            .counterexample
+            .as_ref()
+            .expect("failing biconditional property should have counterexample");
+        assert!(
+            !cex.states.is_empty(),
+            "counterexample should contain at least one state"
+        );
+    }
+
+    #[test]
+    fn biconditional_composed_with_not_and_next() {
+        // Absorbing system: 0->1, 1->2, 2->2.
+        // `always (not (x = 2) <-> next (x != 2))` passes: at x=0 both sides true
+        // (not at 2, and next is 1 which is != 2); at x=1 lhs is true (not 2) but
+        // next is 2 so rhs is false — WAIT, that means it should fail.
+        // Let's reason carefully:
+        //   x=0: lhs = not(0=2) = true,  next is x=1, rhs = (1!=2) = true  => true<->true = true
+        //   x=1: lhs = not(1=2) = true,  next is x=2, rhs = (2!=2) = false => true<->false = false
+        //   x=2: lhs = not(2=2) = false, next is x=2, rhs = (2!=2) = false => false<->false = true
+        // So this fails at x=1. Good, we can test both a passing and failing variant.
+        //
+        // Passing variant: `always (x = 2 <-> next (x = 2))` — once absorbed, stays;
+        // before absorption, x != 2 and next != 2 except at x=1 where next = 2.
+        //   x=0: lhs=false, next=1, rhs=false => true
+        //   x=1: lhs=false, next=2, rhs=true  => false  -- also fails!
+        //
+        // Simpler passing variant: use only two states.
+        // System: x toggles 0->1->0->1...
+        // `always (x = 0 <-> not (x = 1))` passes: x=0 iff x!=1, which is always true
+        // since x is either 0 or 1.
+        let report = report(
+            r"
+            let x: 0..1
+            init { x = 0 }
+            transition toggle { (x = 0 and x' = 1) or (x = 1 and x' = 0) }
+            property iff_not_complement { always (x = 0 <-> not (x = 1)) }
+            property iff_not_next_fails { always (x = 0 <-> next (x = 0)) }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.status, CheckStatus::Fail);
+        // x = 0 <-> not(x = 1) is a tautology over {0, 1}
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Pass,
+            "biconditional with not (complement) should pass"
+        );
+        assert!(report.properties[0].counterexample.is_none());
+        // x = 0 <-> next(x = 0) fails: at x=0, next is x=1, so lhs=true, rhs=false
+        assert_eq!(
+            report.properties[1].status,
+            CheckStatus::Fail,
+            "biconditional with next on toggle should fail"
+        );
+        let cex = report.properties[1]
+            .counterexample
+            .as_ref()
+            .expect("failing biconditional-next property should have counterexample");
+        assert!(
+            !cex.states.is_empty(),
+            "counterexample should contain at least one state"
+        );
+    }
+
+    #[test]
     fn always_implication_composed_with_next() {
         // Absorbing system: 0->1, 1->2, 2->2.
         // `always (x = 2 -> next (x = 2))` passes because at x=2 the system
