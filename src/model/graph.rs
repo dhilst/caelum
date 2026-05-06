@@ -460,6 +460,48 @@ mod tests {
     }
 
     #[test]
+    fn mod_in_init_expression() {
+        // mod used directly in an init expression: x = 7 mod 3 evaluates to 1
+        let graph = graph(
+            r"
+            let x: 0..3
+            init { x = 7 mod 3 }
+            transition step { x' = (x + 1) mod 4 }
+            property p { □ (x >= 0) }
+            ",
+        )
+        .expect("graph should build with mod in init expression");
+
+        // 7 mod 3 = 1, so x starts at 1, cycling 1 -> 2 -> 3 -> 0 -> 1 ...
+        // All 4 values reachable
+        assert_eq!(graph.states.len(), 4);
+        assert_eq!(graph.initial_states.len(), 1);
+        // The initial state should have x = 1
+        let init_idx = graph.initial_states[0];
+        assert_eq!(graph.states[init_idx].values, vec![Value::Int(1)]);
+    }
+
+    #[test]
+    fn mod_wraps_counter_to_exact_cycle() {
+        // Counter 0..5 with x' = (x + 1) mod 6 produces exactly 6 reachable
+        // states forming a single cycle: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 0
+        let graph = graph(
+            r"
+            let x: 0..5
+            init { x = 0 }
+            transition tick { x' = (x + 1) mod 6 }
+            property p { □ (x mod 3 < 3) }
+            ",
+        )
+        .expect("graph should build for mod-6 counter");
+
+        assert_eq!(graph.states.len(), 6);
+        assert_eq!(graph.initial_states.len(), 1);
+        // Deterministic: each state has exactly one successor
+        assert_eq!(graph.edge_count(), 6);
+    }
+
+    #[test]
     fn enforces_state_limit() {
         let file = parse_source(
             r"
