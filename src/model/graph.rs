@@ -2009,4 +2009,113 @@ mod tests {
             "(try,try) should have 2 successors: p1_enter and p2_enter (but not both)"
         );
     }
+
+    #[test]
+    fn three_bool_ripple_counter_8_states_8_edges_and_successor_chain() {
+        // 3-bit ripple counter using three boolean variables (b0=LSB, b1, b2=MSB).
+        // b0 flips every step, b1 flips when b0 carries (was true),
+        // b2 flips when both b0 and b1 carry (both were true).
+        //
+        // Three mutually exclusive transitions cover all states:
+        //   no_carry:   b0=F -> b0'=T, b1'=b1, b2'=b2
+        //   carry_one:  b0=T, b1=F -> b0'=F, b1'=T, b2'=b2
+        //   carry_two:  b0=T, b1=T -> b0'=F, b1'=F, b2'=not(b2)
+        //
+        // Deterministic 8-state cycle visiting all bool combinations:
+        //   (F,F,F) -> (F,F,T) -> (F,T,F) -> (F,T,T) ->
+        //   (T,F,F) -> (T,F,T) -> (T,T,F) -> (T,T,T) -> (F,F,F)
+        // where tuple is (b2, b1, b0).
+        let graph = graph(
+            r"
+            let b0: bool
+            let b1: bool
+            let b2: bool
+            init { b0 = false ∧ b1 = false ∧ b2 = false }
+            transition no_carry {
+                b0 = false
+                ∧ b0' = true ∧ b1' = b1 ∧ b2' = b2
+            }
+            transition carry_one {
+                b0 = true ∧ b1 = false
+                ∧ b0' = false ∧ b1' = true ∧ b2' = b2
+            }
+            transition carry_two {
+                b0 = true ∧ b1 = true
+                ∧ b0' = false ∧ b1' = false ∧ b2' = ¬ b2
+            }
+            ",
+        )
+        .expect("graph should build for 3-bool ripple counter");
+
+        assert_eq!(graph.variables, vec!["b0", "b1", "b2"]);
+        // All 2^3 = 8 bool combinations are reachable
+        assert_eq!(graph.states.len(), 8, "all 8 bool combinations should be reachable");
+        assert_eq!(graph.initial_states.len(), 1);
+        // Deterministic: each state has exactly one successor, so 8 edges total
+        assert_eq!(graph.edge_count(), 8, "deterministic cycle: 8 states, 8 edges");
+
+        // Verify every state has exactly 1 successor (fully deterministic)
+        for (i, successors) in graph.edges.iter().enumerate() {
+            assert_eq!(
+                successors.len(),
+                1,
+                "state {} should have exactly 1 successor (deterministic)",
+                i
+            );
+        }
+
+        // Helper to find state index by (b0, b1, b2) bool values
+        let find_state = |b0: bool, b1: bool, b2: bool| -> usize {
+            graph
+                .states
+                .iter()
+                .position(|s| {
+                    s.values[0] == Value::Bool(b0)
+                        && s.values[1] == Value::Bool(b1)
+                        && s.values[2] == Value::Bool(b2)
+                })
+                .unwrap_or_else(|| panic!("state ({}, {}, {}) should be reachable", b0, b1, b2))
+        };
+
+        // Verify the complete successor chain for the 8-step cycle:
+        //   counter 0: (F,F,F) -> counter 1: (T,F,F)  [no_carry: b0 flips]
+        //   counter 1: (T,F,F) -> counter 2: (F,T,F)  [carry_one: b0 flips, b1 flips]
+        //   counter 2: (F,T,F) -> counter 3: (T,T,F)  [no_carry: b0 flips]
+        //   counter 3: (T,T,F) -> counter 4: (F,F,T)  [carry_two: all flip]
+        //   counter 4: (F,F,T) -> counter 5: (T,F,T)  [no_carry: b0 flips]
+        //   counter 5: (T,F,T) -> counter 6: (F,T,T)  [carry_one: b0 flips, b1 flips]
+        //   counter 6: (F,T,T) -> counter 7: (T,T,T)  [no_carry: b0 flips]
+        //   counter 7: (T,T,T) -> counter 0: (F,F,F)  [carry_two: all flip, wraps]
+        let expected_chain: Vec<(bool, bool, bool)> = vec![
+            (false, false, false), // 0
+            (true,  false, false), // 1
+            (false, true,  false), // 2
+            (true,  true,  false), // 3
+            (false, false, true),  // 4
+            (true,  false, true),  // 5
+            (false, true,  true),  // 6
+            (true,  true,  true),  // 7
+        ];
+
+        for i in 0..8 {
+            let (b0, b1, b2) = expected_chain[i];
+            let (nb0, nb1, nb2) = expected_chain[(i + 1) % 8];
+            let current = find_state(b0, b1, b2);
+            let expected_next = find_state(nb0, nb1, nb2);
+            let actual_next = graph.edges[current][0];
+            assert_eq!(
+                actual_next, expected_next,
+                "counter {}: ({},{},{}) should go to ({},{},{}), but went to {:?}",
+                i, b0, b1, b2, nb0, nb1, nb2, graph.states[actual_next].values
+            );
+        }
+
+        // Verify initial state is (F,F,F) = counter 0
+        let init_idx = graph.initial_states[0];
+        assert_eq!(
+            graph.states[init_idx].values,
+            vec![Value::Bool(false), Value::Bool(false), Value::Bool(false)],
+            "initial state should be (false, false, false) = counter 0"
+        );
+    }
 }

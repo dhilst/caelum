@@ -2380,4 +2380,155 @@ mod tests {
         );
         assert!(report.properties[6].counterexample.is_none());
     }
+
+    #[test]
+    fn three_bool_ripple_counter_ltl_properties() {
+        // 3-bit ripple counter with cascading carries. Tests LTL properties that
+        // exercise different toggle frequencies across bits and carry propagation.
+        //
+        // b0 toggles every step (period 2), b1 every 2 steps (period 4),
+        // b2 every 4 steps (period 8). Deterministic 8-state cycle.
+        //
+        // Properties tested:
+        //   P1 (PASS): b0 toggles every step: always (b0=T <-> next(b0=F))
+        //   P2 (FAIL): b1 toggles every step: always (b1=T <-> next(b1=F))
+        //       Counterexample: at counter=2 (b0=F,b1=T,b2=F), no_carry fires
+        //       giving counter=3 (b0=T,b1=T,b2=F) -- b1 stays true.
+        //   P3 (PASS): all-false state recurs: always eventually (b0=F and b1=F and b2=F)
+        //       The 8-step cycle passes through (F,F,F) every 8 steps.
+        //   P4 (PASS): carry propagation: always (b0=T and b1=F -> next(b1=T))
+        //       carry_one is the only enabled transition when b0=T, b1=F.
+        //   P5 (PASS): full carry: always (b0=T and b1=T and b2=F -> next(b2=T))
+        //       carry_two flips b2 from F to T when b0=T and b1=T.
+        //   P6 (FAIL): b2 never becomes true -- fails at counter=4.
+        //   P7 (FAIL): once b2 is true it stays true forever -- fails when
+        //       carry_two at counter=7 flips b2 back to false.
+        //   P8 (PASS): b0 is true infinitely often (every other step).
+        let report = report(
+            r"
+            let b0: bool
+            let b1: bool
+            let b2: bool
+            init { b0 = false ∧ b1 = false ∧ b2 = false }
+            transition no_carry {
+                b0 = false
+                ∧ b0' = true ∧ b1' = b1 ∧ b2' = b2
+            }
+            transition carry_one {
+                b0 = true ∧ b1 = false
+                ∧ b0' = false ∧ b1' = true ∧ b2' = b2
+            }
+            transition carry_two {
+                b0 = true ∧ b1 = true
+                ∧ b0' = false ∧ b1' = false ∧ b2' = ¬ b2
+            }
+
+            property b0_toggles_every_step {
+                □ (b0 = true <-> ◯ (b0 = false))
+            }
+            property b1_toggles_every_step {
+                □ (b1 = true <-> ◯ (b1 = false))
+            }
+            property all_false_recurs {
+                □ ◇ (b2 = false ∧ b1 = false ∧ b0 = false)
+            }
+            property carry_into_b1 {
+                □ (b0 = true ∧ b1 = false -> ◯ (b1 = true))
+            }
+            property full_carry_to_b2 {
+                □ (b0 = true ∧ b1 = true ∧ b2 = false -> ◯ (b2 = true))
+            }
+            property b2_never_true {
+                □ (b2 = false)
+            }
+            property b2_stays_true {
+                □ (b2 = true -> □ (b2 = true))
+            }
+            property b0_true_infinitely {
+                □ ◇ (b0 = true)
+            }
+            ",
+        )
+        .expect("check should run");
+
+        assert_eq!(report.properties.len(), 8, "should have exactly 8 properties");
+
+        // Overall status must be Fail since some properties fail
+        assert_eq!(report.status, CheckStatus::Fail);
+
+        // P1 (PASS): b0 toggles every step -- the LSB of a binary counter
+        // always flips between consecutive steps
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Pass,
+            "b0 should toggle every step (period 2)"
+        );
+        assert!(report.properties[0].counterexample.is_none());
+
+        // P2 (FAIL): b1 does NOT toggle every step -- it only flips on carry
+        // from b0 (every 2 steps), so b1=T -> next(b1=T) at counter=2->3
+        assert_eq!(
+            report.properties[1].status,
+            CheckStatus::Fail,
+            "b1 does NOT toggle every step (only on carry from b0)"
+        );
+        let cex = report.properties[1]
+            .counterexample
+            .as_ref()
+            .expect("failing b1-toggle property should have counterexample");
+        assert!(
+            !cex.states.is_empty(),
+            "counterexample should contain at least one state"
+        );
+
+        // P3 (PASS): all-false state recurs -- the 8-step deterministic cycle
+        // passes through (F,F,F) exactly once per period
+        assert_eq!(
+            report.properties[2].status,
+            CheckStatus::Pass,
+            "all-false state should recur (always eventually)"
+        );
+        assert!(report.properties[2].counterexample.is_none());
+
+        // P4 (PASS): carry propagation from b0 to b1
+        assert_eq!(
+            report.properties[3].status,
+            CheckStatus::Pass,
+            "carry from b0 to b1 should hold"
+        );
+        assert!(report.properties[3].counterexample.is_none());
+
+        // P5 (PASS): full carry propagation to b2
+        assert_eq!(
+            report.properties[4].status,
+            CheckStatus::Pass,
+            "full carry to b2 should hold"
+        );
+        assert!(report.properties[4].counterexample.is_none());
+
+        // P6 (FAIL): b2 never true -- fails because b2 becomes true at counter=4
+        assert_eq!(
+            report.properties[5].status,
+            CheckStatus::Fail,
+            "b2=false invariant should fail (b2 becomes true at counter 4)"
+        );
+        assert!(report.properties[5].counterexample.is_some());
+
+        // P7 (FAIL): b2 stays true once set -- fails because carry_two at
+        // counter=7 (T,T,T) wraps b2 back to false
+        assert_eq!(
+            report.properties[6].status,
+            CheckStatus::Fail,
+            "b2 persistence should fail (carry_two wraps b2 back to false)"
+        );
+        assert!(report.properties[6].counterexample.is_some());
+
+        // P8 (PASS): b0 is true infinitely often
+        assert_eq!(
+            report.properties[7].status,
+            CheckStatus::Pass,
+            "b0 should be true infinitely often (every other step)"
+        );
+        assert!(report.properties[7].counterexample.is_none());
+    }
 }
