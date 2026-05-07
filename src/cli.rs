@@ -49,6 +49,12 @@ pub struct Cli {
 
     #[arg(long = "bmc-depth", default_value_t = 50, global = true)]
     bmc_depth: usize,
+
+    /// Try k-induction on safety properties that pass the base case so we
+    /// can certify them as invariants rather than just "no counterexample
+    /// within k steps". Only meaningful with `--engine bmc`.
+    #[arg(long = "prove", alias = "k-induction", global = true)]
+    prove: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -149,6 +155,7 @@ fn run_cli(cli: Cli) -> Result<bool> {
         engine: cli.engine,
         solver: cli.solver,
         bmc_depth: cli.bmc_depth,
+        prove: cli.prove,
     };
 
     match cli.command {
@@ -191,6 +198,7 @@ struct EngineOptions {
     engine: Engine,
     solver: SolverChoice,
     bmc_depth: usize,
+    prove: bool,
 }
 
 fn check(
@@ -252,6 +260,7 @@ fn check_bmc(
 
     let opts = BmcOptions {
         depth: engine.bmc_depth,
+        prove: engine.prove,
     };
     let report = check_with_bmc(&spec.source, &opts, backend)?;
     match format {
@@ -314,6 +323,7 @@ fn print_human_report(
         CheckStatus::Pass => "OK",
         CheckStatus::Fail => "FAIL",
         CheckStatus::Skipped => "SKIP",
+        CheckStatus::Certified => "OK",
     };
     if let Some(graph) = graph {
         println!(
@@ -344,6 +354,7 @@ fn print_human_report(
                 CheckStatus::Pass => "PASS",
                 CheckStatus::Fail => "FAIL",
                 CheckStatus::Skipped => "SKIP",
+                CheckStatus::Certified => "CERT",
             },
             kind_label,
             property.name

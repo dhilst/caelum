@@ -29,11 +29,18 @@ use super::solver::{SatLit, Solver};
 #[derive(Debug, Clone, Copy)]
 pub struct BmcOptions {
     pub depth: usize,
+    /// When true, attempt k-induction on safety properties that pass the
+    /// base case so we can certify them as invariants rather than just
+    /// "no counterexample within k steps".
+    pub prove: bool,
 }
 
 impl Default for BmcOptions {
     fn default() -> Self {
-        Self { depth: 50 }
+        Self {
+            depth: 50,
+            prove: false,
+        }
     }
 }
 
@@ -43,10 +50,16 @@ enum PropShape<'a> {
     Always(&'a Expr),
     /// `□ ◇ φ` with non-temporal `φ`.
     AlwaysEventually(&'a Expr),
+    /// `◇ □ φ` with non-temporal `φ` — eventually-stable.
+    EventuallyAlways(&'a Expr),
     /// `◇ φ` with non-temporal `φ`.
     Eventually(&'a Expr),
     /// `φ U ψ` with both operands non-temporal.
     Until(&'a Expr, &'a Expr),
+    /// `□ (P → ◇ Q)` with non-temporal `P`, `Q`.
+    Response { trigger: &'a Expr, target: &'a Expr },
+    /// `□ (P → □ Q)` with non-temporal `P`, `Q`.
+    ResponseAlways { trigger: &'a Expr, target: &'a Expr },
     /// Non-temporal: just check at time 0.
     State(&'a Expr),
     /// Outside the supported grammar.
@@ -57,7 +70,12 @@ impl PropShape<'_> {
     fn needs_lasso(&self) -> bool {
         matches!(
             self,
-            PropShape::AlwaysEventually(_) | PropShape::Eventually(_) | PropShape::Until(_, _)
+            PropShape::AlwaysEventually(_)
+                | PropShape::EventuallyAlways(_)
+                | PropShape::Eventually(_)
+                | PropShape::Until(_, _)
+                | PropShape::Response { .. }
+                | PropShape::ResponseAlways { .. }
         )
     }
 }
@@ -291,17 +309,7 @@ fn encode_violation(
         PropShape::AlwaysEventually(body) => {
             // Counterexample (◇ □ ¬body) iff ∃ l. lc_l ∧ ⋀_{t ∈ [l, k]} ¬body(s_t).
             let lc = lasso.expect("lasso required for AlwaysEventually");
-            let mut body_lits = Vec::with_capacity(last_observed + 1);
-            for t in 0..=last_observed {
-                let body_lit =
-                    encoder
-                        .encode(body, t)?
-                        .as_bool()
-                        .ok_or_else(|| CaelumError::Model {
-                            message: "BMC: property body did not encode to a boolean".into(),
-                        })?;
-                body_lits.push(body_lit);
-            }
+            let body_lits = encode_per_step(encoder, body, last_observed)?;
             let mut disjuncts = Vec::with_capacity(last_observed + 1);
             for l in 0..=last_observed {
                 let mut conj = vec![lc[l]];
@@ -309,6 +317,24 @@ fn encode_violation(
                     conj.push(-body_lits[t]);
                 }
                 disjuncts.push(encoder.band_many(&conj));
+            }
+            let any = encoder.bor_many(&disjuncts);
+            encoder.assert(any);
+        }
+        PropShape::EventuallyAlways(body) => {
+            // `◇ □ body` violation: `□ ◇ ¬body` — every position has a later
+            // ¬body.  On a lasso this is exactly "the loop body contains a
+            // ¬body somewhere": ⋁_l (lc_l ∧ ⋁_{i ∈ [l, k]} ¬body(s_i)).
+            let lc = lasso.expect("lasso required for EventuallyAlways");
+            let body_lits = encode_per_step(encoder, body, last_observed)?;
+            let mut disjuncts = Vec::with_capacity(last_observed + 1);
+            for l in 0..=last_observed {
+                let mut tail_negs = Vec::with_capacity(last_observed - l + 1);
+                for t in l..=last_observed {
+                    tail_negs.push(-body_lits[t]);
+                }
+                let any_neg = encoder.bor_many(&tail_negs);
+                disjuncts.push(encoder.band(lc[l], any_neg));
             }
             let any = encoder.bor_many(&disjuncts);
             encoder.assert(any);
@@ -340,9 +366,102 @@ fn encode_violation(
                 encoder.assert(any);
             }
         }
+        PropShape::Response { trigger, target } => {
+            // Counterexample: ∃ t,l. P(s_t) ∧ lc_l ∧ ⋀_{i ∈ [t,k]} ¬Q(s_i)
+            //                     ∧ ⋀_{i ∈ [l,k]} ¬Q(s_i).
+            // Split into two independent disjuncts because t and l are
+            // independently quantified once tail_q_fails is computed.
+            let lc = lasso.expect("lasso required for Response");
+            let p_lits = encode_per_step(encoder, trigger, last_observed)?;
+            let q_lits = encode_per_step(encoder, target, last_observed)?;
+            let tail_q_fails = build_tail_all_fail(encoder, &q_lits);
+            // ⋁_t (P(s_t) ∧ tail_q_fails[t]) — some trigger exists with bad
+            // tail in the prefix.
+            let mut prefix_disjuncts = Vec::with_capacity(last_observed + 1);
+            for t in 0..=last_observed {
+                let conj = encoder.band(p_lits[t], tail_q_fails[t]);
+                prefix_disjuncts.push(conj);
+            }
+            let prefix_arm = encoder.bor_many(&prefix_disjuncts);
+            // ⋁_l (lc_l ∧ tail_q_fails[l]) — the loop body has no Q.
+            let mut loop_disjuncts = Vec::with_capacity(last_observed + 1);
+            for (l, &lc_l) in lc.iter().enumerate().take(last_observed + 1) {
+                let conj = encoder.band(lc_l, tail_q_fails[l]);
+                loop_disjuncts.push(conj);
+            }
+            let loop_arm = encoder.bor_many(&loop_disjuncts);
+            // Both arms must hold.
+            encoder.assert(prefix_arm);
+            encoder.assert(loop_arm);
+        }
+        PropShape::ResponseAlways { trigger, target } => {
+            // `□ (P → □ Q)` violation: ∃ t. P(s_t) ∧ ◇ ¬Q from t.
+            // ◇ ¬Q from t = (∃ i ∈ [t,k]. ¬Q(s_i)) ∨ loop_q_fails_anywhere.
+            let lc = lasso.expect("lasso required for ResponseAlways");
+            let p_lits = encode_per_step(encoder, trigger, last_observed)?;
+            let q_lits = encode_per_step(encoder, target, last_observed)?;
+            let tail_q_fails_any = build_tail_any_fail(encoder, &q_lits);
+            // loop_q_fails_anywhere = ⋁_l (lc_l ∧ tail_q_fails_any[l]).
+            let mut loop_disjuncts = Vec::with_capacity(last_observed + 1);
+            for (l, &lc_l) in lc.iter().enumerate().take(last_observed + 1) {
+                let conj = encoder.band(lc_l, tail_q_fails_any[l]);
+                loop_disjuncts.push(conj);
+            }
+            let loop_failure = encoder.bor_many(&loop_disjuncts);
+            // ∃ t. P(s_t) ∧ (tail_q_fails_any[t] ∨ loop_failure).
+            let mut disjuncts = Vec::with_capacity(last_observed + 1);
+            for t in 0..=last_observed {
+                let either = encoder.bor(tail_q_fails_any[t], loop_failure);
+                disjuncts.push(encoder.band(p_lits[t], either));
+            }
+            let any = encoder.bor_many(&disjuncts);
+            encoder.assert(any);
+        }
         PropShape::Unsupported(_) => unreachable!("filtered earlier"),
     }
     Ok(())
+}
+
+/// Helper: encode `expr` at every t in `[0, last]` and return one bool lit per step.
+fn encode_per_step(encoder: &mut Encoder<'_>, expr: &Expr, last: usize) -> Result<Vec<SatLit>> {
+    let mut out = Vec::with_capacity(last + 1);
+    for t in 0..=last {
+        out.push(
+            encoder
+                .encode(expr, t)?
+                .as_bool()
+                .ok_or_else(|| CaelumError::Model {
+                    message: "BMC: response sub-formula did not encode to a boolean".into(),
+                })?,
+        );
+    }
+    Ok(out)
+}
+
+/// `tail_all_fail[t] = ⋀_{i ∈ [t, k]} ¬q_lits[i]`.  Built right-to-left
+/// using the chain `tail[t] = ¬q[t] ∧ tail[t+1]` so the encoder reuses a
+/// linear number of fresh literals instead of `O(k²)`.
+fn build_tail_all_fail(encoder: &mut Encoder<'_>, q_lits: &[SatLit]) -> Vec<SatLit> {
+    let n = q_lits.len();
+    let mut tail = vec![encoder.true_lit_value(); n + 1];
+    // tail[n] = true (empty conjunction).
+    for t in (0..n).rev() {
+        tail[t] = encoder.band(-q_lits[t], tail[t + 1]);
+    }
+    tail.truncate(n);
+    tail
+}
+
+/// `tail_any_fail[t] = ⋁_{i ∈ [t, k]} ¬q_lits[i]`.
+fn build_tail_any_fail(encoder: &mut Encoder<'_>, q_lits: &[SatLit]) -> Vec<SatLit> {
+    let n = q_lits.len();
+    let mut tail = vec![-encoder.true_lit_value(); n + 1];
+    // tail[n] = false (empty disjunction).
+    for t in (0..n).rev() {
+        tail[t] = encoder.bor(-q_lits[t], tail[t + 1]);
+    }
+    tail.truncate(n);
+    tail
 }
 
 fn classify(expr: &Expr) -> PropShape<'_> {
@@ -360,10 +479,34 @@ fn classify(expr: &Expr) -> PropShape<'_> {
                 return if is_state_formula(phi) {
                     PropShape::AlwaysEventually(phi)
                 } else {
-                    PropShape::Unsupported(
-                        "BMC v2 supports `□ ◇ φ` only with a non-temporal φ".into(),
-                    )
+                    PropShape::Unsupported("BMC supports `□ ◇ φ` only with a non-temporal φ".into())
                 };
+            }
+            // `□ (P → ◇ Q)` or `□ (P → □ Q)` — response patterns.
+            if let Expr::Binary {
+                op: BinaryOp::Implies,
+                lhs: trigger,
+                rhs,
+            } = body.as_ref()
+            {
+                if let Expr::Unary {
+                    op: UnaryOp::Eventually,
+                    expr: target,
+                } = rhs.as_ref()
+                {
+                    if is_state_formula(trigger) && is_state_formula(target) {
+                        return PropShape::Response { trigger, target };
+                    }
+                }
+                if let Expr::Unary {
+                    op: UnaryOp::Always,
+                    expr: target,
+                } = rhs.as_ref()
+                {
+                    if is_state_formula(trigger) && is_state_formula(target) {
+                        return PropShape::ResponseAlways { trigger, target };
+                    }
+                }
             }
             // `□ φ` with optional ◯.
             if let Some(msg) = check_safety_body(body) {
@@ -375,10 +518,23 @@ fn classify(expr: &Expr) -> PropShape<'_> {
             op: UnaryOp::Eventually,
             expr: phi,
         } => {
+            // `◇ □ φ` — stabilisation pattern.
+            if let Expr::Unary {
+                op: UnaryOp::Always,
+                expr: target,
+            } = phi.as_ref()
+            {
+                if is_state_formula(target) {
+                    return PropShape::EventuallyAlways(target);
+                }
+            }
             if is_state_formula(phi) {
                 PropShape::Eventually(phi)
             } else {
-                PropShape::Unsupported("BMC v2 supports `◇ φ` only with a non-temporal φ".into())
+                PropShape::Unsupported(
+                    "BMC supports `◇ φ` only with a non-temporal φ (or `◇ □ φ` with non-temporal φ)"
+                        .into(),
+                )
             }
         }
         Expr::Binary {
@@ -490,4 +646,133 @@ fn decode_trace(spec: &BmcSpec<'_>, encoder: &Encoder<'_>, total_steps: usize) -
         states.push(State { values: row });
     }
     states
+}
+
+/// Outcome of attempting k-induction on a property.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InductionOutcome {
+    /// The inductive step was UNSAT — the property is k-inductive (an
+    /// invariant for all reachable states).
+    Holds,
+    /// The inductive step found a counterexample at depth k. The property
+    /// may still be invariant (and only fail to be k-inductive at this k),
+    /// but BMC can no longer certify it without strengthening or larger k.
+    Inconclusive,
+    /// Property shape is not a candidate for k-induction (e.g. liveness,
+    /// `Invalid` block, or `□ φ` with `◯` inside `φ`).
+    NotApplicable,
+}
+
+/// Returns `true` iff the property is a candidate for k-induction —
+/// kind = Property, shape = Always(body) with non-temporal body and no
+/// `◯` inside.  This mirrors the soundness conditions of standard
+/// k-induction with simple paths.
+pub fn property_eligible_for_induction(property: &PropertyBlock) -> bool {
+    if property.kind != PropertyKind::Property {
+        return false;
+    }
+    let shape = classify(&property.expr);
+    match shape {
+        PropShape::Always(body) => max_next_depth(body).map(|d| d == 0).unwrap_or(false),
+        _ => false,
+    }
+}
+
+/// Run the inductive step of k-induction with simple paths.  The base
+/// case (no counterexample within `k` steps from the initial states) must
+/// have already passed; this function only checks that any `(k+1)`-step
+/// simple path with `body` true at every state in `[0, k]` extends to a
+/// state where `body` is also true.  Returns `InductionOutcome::Holds`
+/// iff the SAT instance is UNSAT.
+pub fn check_induction(
+    spec: &BmcSpec<'_>,
+    property: &PropertyBlock,
+    options: &BmcOptions,
+    solver: &mut dyn Solver,
+) -> Result<InductionOutcome> {
+    if !property_eligible_for_induction(property) {
+        return Ok(InductionOutcome::NotApplicable);
+    }
+    let body = match classify(&property.expr) {
+        PropShape::Always(b) => b,
+        _ => return Ok(InductionOutcome::NotApplicable),
+    };
+
+    let k = options.depth;
+    let last_state = k + 1; // states 0..=k+1, so k+2 states total
+
+    let mut encoder = Encoder::new(
+        solver,
+        spec.constants.clone(),
+        spec.enum_variant_type.clone(),
+        spec.domains.clone(),
+    );
+
+    // Pre-allocate state vars at every relevant timestep.
+    for t in 0..=last_state {
+        for var in &spec.variables {
+            encoder.var_at_time(&var.name, t)?;
+        }
+    }
+
+    // Encode transitions for adjacent pairs in 0..k+1.
+    if !spec.transition_blocks.is_empty() {
+        for t in 0..last_state {
+            let mut block_lits = Vec::new();
+            for block in &spec.transition_blocks {
+                let lit = encoder.encode(&block.expr, t)?.as_bool().ok_or_else(|| {
+                    CaelumError::Model {
+                        message: "BMC: transition block did not encode to a boolean".into(),
+                    }
+                })?;
+                block_lits.push(lit);
+            }
+            let any = encoder.bor_many(&block_lits);
+            encoder.assert(any);
+        }
+    }
+
+    // Assume body holds at every state in [0, k].
+    for t in 0..=k {
+        let lit = encoder
+            .encode(body, t)?
+            .as_bool()
+            .ok_or_else(|| CaelumError::Model {
+                message: "BMC: property body did not encode to a boolean".into(),
+            })?;
+        encoder.assert(lit);
+    }
+
+    // Search for a state at k+1 where body is false.
+    let last_lit =
+        encoder
+            .encode(body, last_state)?
+            .as_bool()
+            .ok_or_else(|| CaelumError::Model {
+                message: "BMC: property body did not encode to a boolean".into(),
+            })?;
+    encoder.assert(-last_lit);
+
+    // Simple-path constraint: pairwise inequality across [0, k+1].
+    // Each pair contributes ⋁_v (s_i.v ≠ s_j.v).
+    for i in 0..=last_state {
+        for j in (i + 1)..=last_state {
+            let mut diffs = Vec::with_capacity(spec.variables.len());
+            for var in &spec.variables {
+                let a = encoder.var_at_time(&var.name, i)?;
+                let b = encoder.var_at_time(&var.name, j)?;
+                let eq_lit = encoder.symval_equal(&a, &b)?;
+                diffs.push(-eq_lit);
+            }
+            let differs = encoder.bor_many(&diffs);
+            encoder.assert(differs);
+        }
+    }
+
+    let sat = encoder.solve()?;
+    Ok(if sat {
+        InductionOutcome::Inconclusive
+    } else {
+        InductionOutcome::Holds
+    })
 }

@@ -65,6 +65,12 @@ impl<'a> Encoder<'a> {
         -self.true_lit
     }
 
+    /// Constant literal that is always true under any model — useful for
+    /// callers that need to inject a unit identity into a chain encoding.
+    pub fn true_lit_value(&self) -> SatLit {
+        self.true_lit
+    }
+
     /// Get or allocate the SymVal for a state variable at a given time.
     pub fn var_at_time(&mut self, name: &str, time: usize) -> Result<SymVal> {
         if let Some(value) = self.var_cache.get(&(name.to_string(), time)) {
