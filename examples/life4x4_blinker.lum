@@ -1,0 +1,89 @@
+module examples.life4x4_blinker
+
+// Game of Life on a 4x4 toroidal grid.
+// Each cell is 0 (dead) or 1 (alive). The transition encodes Conway's rule:
+// next-alive iff (neighbour-sum = 3) or (currently-alive and neighbour-sum = 2).
+
+let c_0_0 ∈ 0..1
+let c_0_1 ∈ 0..1
+let c_0_2 ∈ 0..1
+let c_0_3 ∈ 0..1
+let c_1_0 ∈ 0..1
+let c_1_1 ∈ 0..1
+let c_1_2 ∈ 0..1
+let c_1_3 ∈ 0..1
+let c_2_0 ∈ 0..1
+let c_2_1 ∈ 0..1
+let c_2_2 ∈ 0..1
+let c_2_3 ∈ 0..1
+let c_3_0 ∈ 0..1
+let c_3_1 ∈ 0..1
+let c_3_2 ∈ 0..1
+let c_3_3 ∈ 0..1
+
+init {
+  c_0_0 = 0 ∧
+  c_0_1 = 1 ∧
+  c_0_2 = 0 ∧
+  c_0_3 = 0 ∧
+  c_1_0 = 0 ∧
+  c_1_1 = 1 ∧
+  c_1_2 = 0 ∧
+  c_1_3 = 0 ∧
+  c_2_0 = 0 ∧
+  c_2_1 = 1 ∧
+  c_2_2 = 0 ∧
+  c_2_3 = 0 ∧
+  c_3_0 = 0 ∧
+  c_3_1 = 0 ∧
+  c_3_2 = 0 ∧
+  c_3_3 = 0
+}
+
+transition step {
+  (c_0_0' = 1 ↔ ((c_3_3 + c_3_0 + c_3_1 + c_0_3 + c_0_1 + c_1_3 + c_1_0 + c_1_1) = 3 ∨ (c_0_0 = 1 ∧ (c_3_3 + c_3_0 + c_3_1 + c_0_3 + c_0_1 + c_1_3 + c_1_0 + c_1_1) = 2))) ∧
+  (c_0_1' = 1 ↔ ((c_3_0 + c_3_1 + c_3_2 + c_0_0 + c_0_2 + c_1_0 + c_1_1 + c_1_2) = 3 ∨ (c_0_1 = 1 ∧ (c_3_0 + c_3_1 + c_3_2 + c_0_0 + c_0_2 + c_1_0 + c_1_1 + c_1_2) = 2))) ∧
+  (c_0_2' = 1 ↔ ((c_3_1 + c_3_2 + c_3_3 + c_0_1 + c_0_3 + c_1_1 + c_1_2 + c_1_3) = 3 ∨ (c_0_2 = 1 ∧ (c_3_1 + c_3_2 + c_3_3 + c_0_1 + c_0_3 + c_1_1 + c_1_2 + c_1_3) = 2))) ∧
+  (c_0_3' = 1 ↔ ((c_3_2 + c_3_3 + c_3_0 + c_0_2 + c_0_0 + c_1_2 + c_1_3 + c_1_0) = 3 ∨ (c_0_3 = 1 ∧ (c_3_2 + c_3_3 + c_3_0 + c_0_2 + c_0_0 + c_1_2 + c_1_3 + c_1_0) = 2))) ∧
+  (c_1_0' = 1 ↔ ((c_0_3 + c_0_0 + c_0_1 + c_1_3 + c_1_1 + c_2_3 + c_2_0 + c_2_1) = 3 ∨ (c_1_0 = 1 ∧ (c_0_3 + c_0_0 + c_0_1 + c_1_3 + c_1_1 + c_2_3 + c_2_0 + c_2_1) = 2))) ∧
+  (c_1_1' = 1 ↔ ((c_0_0 + c_0_1 + c_0_2 + c_1_0 + c_1_2 + c_2_0 + c_2_1 + c_2_2) = 3 ∨ (c_1_1 = 1 ∧ (c_0_0 + c_0_1 + c_0_2 + c_1_0 + c_1_2 + c_2_0 + c_2_1 + c_2_2) = 2))) ∧
+  (c_1_2' = 1 ↔ ((c_0_1 + c_0_2 + c_0_3 + c_1_1 + c_1_3 + c_2_1 + c_2_2 + c_2_3) = 3 ∨ (c_1_2 = 1 ∧ (c_0_1 + c_0_2 + c_0_3 + c_1_1 + c_1_3 + c_2_1 + c_2_2 + c_2_3) = 2))) ∧
+  (c_1_3' = 1 ↔ ((c_0_2 + c_0_3 + c_0_0 + c_1_2 + c_1_0 + c_2_2 + c_2_3 + c_2_0) = 3 ∨ (c_1_3 = 1 ∧ (c_0_2 + c_0_3 + c_0_0 + c_1_2 + c_1_0 + c_2_2 + c_2_3 + c_2_0) = 2))) ∧
+  (c_2_0' = 1 ↔ ((c_1_3 + c_1_0 + c_1_1 + c_2_3 + c_2_1 + c_3_3 + c_3_0 + c_3_1) = 3 ∨ (c_2_0 = 1 ∧ (c_1_3 + c_1_0 + c_1_1 + c_2_3 + c_2_1 + c_3_3 + c_3_0 + c_3_1) = 2))) ∧
+  (c_2_1' = 1 ↔ ((c_1_0 + c_1_1 + c_1_2 + c_2_0 + c_2_2 + c_3_0 + c_3_1 + c_3_2) = 3 ∨ (c_2_1 = 1 ∧ (c_1_0 + c_1_1 + c_1_2 + c_2_0 + c_2_2 + c_3_0 + c_3_1 + c_3_2) = 2))) ∧
+  (c_2_2' = 1 ↔ ((c_1_1 + c_1_2 + c_1_3 + c_2_1 + c_2_3 + c_3_1 + c_3_2 + c_3_3) = 3 ∨ (c_2_2 = 1 ∧ (c_1_1 + c_1_2 + c_1_3 + c_2_1 + c_2_3 + c_3_1 + c_3_2 + c_3_3) = 2))) ∧
+  (c_2_3' = 1 ↔ ((c_1_2 + c_1_3 + c_1_0 + c_2_2 + c_2_0 + c_3_2 + c_3_3 + c_3_0) = 3 ∨ (c_2_3 = 1 ∧ (c_1_2 + c_1_3 + c_1_0 + c_2_2 + c_2_0 + c_3_2 + c_3_3 + c_3_0) = 2))) ∧
+  (c_3_0' = 1 ↔ ((c_2_3 + c_2_0 + c_2_1 + c_3_3 + c_3_1 + c_0_3 + c_0_0 + c_0_1) = 3 ∨ (c_3_0 = 1 ∧ (c_2_3 + c_2_0 + c_2_1 + c_3_3 + c_3_1 + c_0_3 + c_0_0 + c_0_1) = 2))) ∧
+  (c_3_1' = 1 ↔ ((c_2_0 + c_2_1 + c_2_2 + c_3_0 + c_3_2 + c_0_0 + c_0_1 + c_0_2) = 3 ∨ (c_3_1 = 1 ∧ (c_2_0 + c_2_1 + c_2_2 + c_3_0 + c_3_2 + c_0_0 + c_0_1 + c_0_2) = 2))) ∧
+  (c_3_2' = 1 ↔ ((c_2_1 + c_2_2 + c_2_3 + c_3_1 + c_3_3 + c_0_1 + c_0_2 + c_0_3) = 3 ∨ (c_3_2 = 1 ∧ (c_2_1 + c_2_2 + c_2_3 + c_3_1 + c_3_3 + c_0_1 + c_0_2 + c_0_3) = 2))) ∧
+  (c_3_3' = 1 ↔ ((c_2_2 + c_2_3 + c_2_0 + c_3_2 + c_3_0 + c_0_2 + c_0_3 + c_0_0) = 3 ∨ (c_3_3 = 1 ∧ (c_2_2 + c_2_3 + c_2_0 + c_3_2 + c_3_0 + c_0_2 + c_0_3 + c_0_0) = 2)))
+}
+
+// Period-2 oscillation: from any reachable state we always come back to the
+// vertical blinker.
+property oscillates_back_to_vertical {
+  □ ◇ (c_0_0 = 0 ∧ c_0_1 = 1 ∧ c_0_2 = 0 ∧ c_0_3 = 0 ∧ c_1_0 = 0 ∧ c_1_1 = 1 ∧ c_1_2 = 0 ∧ c_1_3 = 0 ∧ c_2_0 = 0 ∧ c_2_1 = 1 ∧ c_2_2 = 0 ∧ c_2_3 = 0 ∧ c_3_0 = 0 ∧ c_3_1 = 0 ∧ c_3_2 = 0 ∧ c_3_3 = 0)
+}
+
+// Safety: every reachable state is one of the two blinker phases.
+property only_two_phases {
+  □ ((c_0_0 = 0 ∧ c_0_1 = 1 ∧ c_0_2 = 0 ∧ c_0_3 = 0 ∧ c_1_0 = 0 ∧ c_1_1 = 1 ∧ c_1_2 = 0 ∧ c_1_3 = 0 ∧ c_2_0 = 0 ∧ c_2_1 = 1 ∧ c_2_2 = 0 ∧ c_2_3 = 0 ∧ c_3_0 = 0 ∧ c_3_1 = 0 ∧ c_3_2 = 0 ∧ c_3_3 = 0) ∨ (c_0_0 = 0 ∧ c_0_1 = 0 ∧ c_0_2 = 0 ∧ c_0_3 = 0 ∧ c_1_0 = 1 ∧ c_1_1 = 1 ∧ c_1_2 = 1 ∧ c_1_3 = 0 ∧ c_2_0 = 0 ∧ c_2_1 = 0 ∧ c_2_2 = 0 ∧ c_2_3 = 0 ∧ c_3_0 = 0 ∧ c_3_1 = 0 ∧ c_3_2 = 0 ∧ c_3_3 = 0))
+}
+
+// Population conservation: the blinker has 3 live cells in every phase.
+property population_is_three {
+  □ ((c_0_0 + c_0_1 + c_0_2 + c_0_3 + c_1_0 + c_1_1 + c_1_2 + c_1_3 + c_2_0 + c_2_1 + c_2_2 + c_2_3 + c_3_0 + c_3_1 + c_3_2 + c_3_3) = 3)
+}
+
+// Deliberately false: the bottom-right cell is always dead in BOTH phases
+// of the blinker, but lets us check a *positive* invariant. The next one
+// should fail.
+property bottom_right_dead {
+  □ (c_3_3 = 0)
+}
+
+// Deliberately false: c_1_0 is dead in the vertical phase but alive in the
+// horizontal phase, so this invariant must fail with a counterexample.
+invalid c_1_0_always_dead {
+  □ (c_1_0 = 0)
+}

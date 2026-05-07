@@ -1,3 +1,5 @@
+#[cfg(any(feature = "bmc-varisat", feature = "bmc-cadical"))]
+pub mod bmc;
 pub mod checker;
 pub mod cli;
 pub mod diagnostics;

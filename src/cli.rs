@@ -6,7 +6,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 
 use crate::checker::ltl::counterexample_as_json;
 use crate::checker::{check_properties, CheckReport, CheckStatus};
-use crate::diagnostics::{Result, CaelumError};
+use crate::diagnostics::{CaelumError, Result};
 use crate::loader::{load_spec, LoadOptions, LoadedSpec};
 use crate::model::{build_graph_with_options, BuildOptions, ModelGraph};
 use crate::sema::check_source_file;
@@ -40,6 +40,15 @@ pub struct Cli {
 
     #[arg(long = "dump-graph", global = true)]
     dump_graph: bool,
+
+    #[arg(long, value_enum, default_value_t = Engine::Explicit, global = true)]
+    engine: Engine,
+
+    #[arg(long, value_enum, default_value_t = SolverChoice::Varisat, global = true)]
+    solver: SolverChoice,
+
+    #[arg(long = "bmc-depth", default_value_t = 50, global = true)]
+    bmc_depth: usize,
 }
 
 #[derive(Debug, Subcommand)]
@@ -62,6 +71,18 @@ enum Command {
 enum OutputFormat {
     Human,
     Json,
+}
+
+#[derive(Debug, Copy, Clone, ValueEnum, PartialEq, Eq)]
+enum Engine {
+    Explicit,
+    Bmc,
+}
+
+#[derive(Debug, Copy, Clone, ValueEnum, PartialEq, Eq)]
+enum SolverChoice {
+    Varisat,
+    Cadical,
 }
 
 #[derive(Debug, Args)]
@@ -124,12 +145,19 @@ fn run_cli(cli: Cli) -> Result<bool> {
         max_states: cli.max_states,
     };
 
+    let engine_opts = EngineOptions {
+        engine: cli.engine,
+        solver: cli.solver,
+        bmc_depth: cli.bmc_depth,
+    };
+
     match cli.command {
         Some(Command::Check { spec }) => check(
             &spec,
             cli.format,
             &load_options,
             &build_options,
+            &engine_opts,
             cli.show_trace,
             cli.dump_graph,
         ),
@@ -150,6 +178,7 @@ fn run_cli(cli: Cli) -> Result<bool> {
                 cli.format,
                 &load_options,
                 &build_options,
+                &engine_opts,
                 cli.show_trace,
                 cli.dump_graph,
             )
@@ -157,25 +186,92 @@ fn run_cli(cli: Cli) -> Result<bool> {
     }
 }
 
+#[derive(Debug, Clone)]
+struct EngineOptions {
+    engine: Engine,
+    solver: SolverChoice,
+    bmc_depth: usize,
+}
+
 fn check(
     path: &Path,
     format: OutputFormat,
     load_options: &LoadOptions,
     build_options: &BuildOptions,
+    engine: &EngineOptions,
     show_trace: bool,
     dump_graph: bool,
 ) -> Result<bool> {
     let spec = load_spec(path, load_options)?;
     check_source_file(&spec.source)?;
-    let graph = build_graph_with_options(&spec.source, build_options)?;
-    let report = check_properties(&spec.source, &graph)?;
 
-    match format {
-        OutputFormat::Human => print_human_report(&spec, &graph, &report, show_trace, dump_graph),
-        OutputFormat::Json => print_json_report(&spec, &graph, &report),
+    match engine.engine {
+        Engine::Explicit => {
+            let graph = build_graph_with_options(&spec.source, build_options)?;
+            let report = check_properties(&spec.source, &graph)?;
+
+            match format {
+                OutputFormat::Human => {
+                    print_human_report(&spec, Some(&graph), &report, show_trace, dump_graph)
+                }
+                OutputFormat::Json => print_json_report(&spec, Some(&graph), &report),
+            }
+
+            Ok(report.status == CheckStatus::Pass)
+        }
+        Engine::Bmc => check_bmc(&spec, format, engine, show_trace),
     }
+}
 
-    Ok(report.status == CheckStatus::Pass)
+#[cfg(any(feature = "bmc-varisat", feature = "bmc-cadical"))]
+fn check_bmc(
+    spec: &LoadedSpec,
+    format: OutputFormat,
+    engine: &EngineOptions,
+    show_trace: bool,
+) -> Result<bool> {
+    use crate::bmc::{check_with_bmc, BmcOptions, SolverBackend};
+    let backend = match engine.solver {
+        #[cfg(feature = "bmc-varisat")]
+        SolverChoice::Varisat => SolverBackend::Varisat,
+        #[cfg(not(feature = "bmc-varisat"))]
+        SolverChoice::Varisat => {
+            return Err(CaelumError::Unsupported {
+                message: "varisat backend not compiled in (enable feature `bmc-varisat`)".into(),
+            })
+        }
+        #[cfg(feature = "bmc-cadical")]
+        SolverChoice::Cadical => SolverBackend::Cadical,
+        #[cfg(not(feature = "bmc-cadical"))]
+        SolverChoice::Cadical => {
+            return Err(CaelumError::Unsupported {
+                message: "cadical backend not compiled in (enable feature `bmc-cadical`)".into(),
+            })
+        }
+    };
+
+    let opts = BmcOptions {
+        depth: engine.bmc_depth,
+    };
+    let report = check_with_bmc(&spec.source, &opts, backend)?;
+    match format {
+        OutputFormat::Human => print_human_report(spec, None, &report, show_trace, false),
+        OutputFormat::Json => print_json_report(spec, None, &report),
+    }
+    Ok(report.status != CheckStatus::Fail)
+}
+
+#[cfg(not(any(feature = "bmc-varisat", feature = "bmc-cadical")))]
+fn check_bmc(
+    _spec: &LoadedSpec,
+    _format: OutputFormat,
+    _engine: &EngineOptions,
+    _show_trace: bool,
+) -> Result<bool> {
+    Err(CaelumError::Unsupported {
+        message: "BMC engine not compiled in; rebuild with --features bmc-varisat or bmc-cadical"
+            .into(),
+    })
 }
 
 fn parse(path: &Path, format: OutputFormat, load_options: &LoadOptions) -> Result<()> {
@@ -209,22 +305,33 @@ fn fmt(path: &Path, print_mode: PrintMode) -> Result<()> {
 
 fn print_human_report(
     spec: &LoadedSpec,
-    graph: &ModelGraph,
+    graph: Option<&ModelGraph>,
     report: &CheckReport,
     show_trace: bool,
     dump_graph: bool,
 ) {
-    println!(
-        "{} loaded {} file(s), typechecked {} item(s), built {} reachable state(s) and {} transition edge(s)",
-        match report.status {
-            CheckStatus::Pass => "OK",
-            CheckStatus::Fail => "FAIL",
-        },
-        spec.files.len(),
-        spec.source.item_count(),
-        graph.states.len(),
-        graph.edge_count()
-    );
+    let header_status = match report.status {
+        CheckStatus::Pass => "OK",
+        CheckStatus::Fail => "FAIL",
+        CheckStatus::Skipped => "SKIP",
+    };
+    if let Some(graph) = graph {
+        println!(
+            "{header_status} loaded {} file(s), typechecked {} item(s), built {} reachable state(s) and {} transition edge(s)",
+            spec.files.len(),
+            spec.source.item_count(),
+            graph.states.len(),
+            graph.edge_count()
+        );
+    } else {
+        println!(
+            "{header_status} loaded {} file(s), typechecked {} item(s), engine=bmc",
+            spec.files.len(),
+            spec.source.item_count(),
+        );
+    }
+
+    let var_names = bmc_variable_names(spec, graph);
 
     for property in &report.properties {
         let kind_label = match property.kind {
@@ -236,16 +343,21 @@ fn print_human_report(
             match property.status {
                 CheckStatus::Pass => "PASS",
                 CheckStatus::Fail => "FAIL",
+                CheckStatus::Skipped => "SKIP",
             },
             kind_label,
             property.name
         );
 
+        if let Some(note) = &property.note {
+            println!("  note: {note}");
+        }
+
         if show_trace {
             if let Some(counterexample) = &property.counterexample {
                 println!("counterexample:");
                 for (index, state) in counterexample.states.iter().enumerate() {
-                    println!("  s{index}: {}", format_state(graph, state));
+                    println!("  s{index}: {}", format_state_named(&var_names, state));
                 }
                 if let Some(cycle_start) = counterexample.cycle_start {
                     println!("  cycle starts at s{cycle_start}");
@@ -255,23 +367,26 @@ fn print_human_report(
     }
 
     if dump_graph {
-        println!("reachable graph:");
-        for (index, state) in graph.states.iter().enumerate() {
-            let successors = graph.edges[index]
-                .iter()
-                .map(|successor| format!("s{successor}"))
-                .collect::<Vec<_>>()
-                .join(", ");
-            println!(
-                "  s{index}: {} -> [{}]",
-                format_state(graph, state),
-                successors
-            );
+        if let Some(graph) = graph {
+            println!("reachable graph:");
+            for (index, state) in graph.states.iter().enumerate() {
+                let successors = graph.edges[index]
+                    .iter()
+                    .map(|successor| format!("s{successor}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                println!(
+                    "  s{index}: {} -> [{}]",
+                    format_state(graph, state),
+                    successors
+                );
+            }
         }
     }
 }
 
-fn print_json_report(spec: &LoadedSpec, graph: &ModelGraph, report: &CheckReport) {
+fn print_json_report(spec: &LoadedSpec, graph: Option<&ModelGraph>, report: &CheckReport) {
+    let var_names = bmc_variable_names(spec, graph);
     let properties = report
         .properties
         .iter()
@@ -280,30 +395,41 @@ fn print_json_report(spec: &LoadedSpec, graph: &ModelGraph, report: &CheckReport
             object.insert("name".to_owned(), serde_json::json!(property.name));
             object.insert("kind".to_owned(), serde_json::json!(property.kind));
             object.insert("status".to_owned(), serde_json::json!(property.status));
+            if let Some(note) = &property.note {
+                object.insert("note".to_owned(), serde_json::json!(note));
+            }
             if let Some(counterexample) = &property.counterexample {
-                object.insert(
-                    "counterexample".to_owned(),
-                    counterexample_as_json(graph, counterexample),
-                );
+                if let Some(graph) = graph {
+                    object.insert(
+                        "counterexample".to_owned(),
+                        counterexample_as_json(graph, counterexample),
+                    );
+                } else {
+                    object.insert(
+                        "counterexample".to_owned(),
+                        counterexample_to_json_named(&var_names, counterexample),
+                    );
+                }
             }
             serde_json::Value::Object(object)
         })
         .collect::<Vec<_>>();
 
-    println!(
-        "{}",
-        serde_json::json!({
-            "tool": "caelum",
-            "status": report.status,
-            "root": spec.root,
-            "files": spec.files.len(),
-            "items": spec.source.item_count(),
-            "states": graph.states.len(),
-            "transitions": graph.edge_count(),
-            "properties": properties,
-            "diagnostics": []
-        })
-    );
+    let mut top = serde_json::Map::new();
+    top.insert("tool".into(), serde_json::json!("caelum"));
+    top.insert("status".into(), serde_json::json!(report.status));
+    top.insert("root".into(), serde_json::json!(spec.root));
+    top.insert("files".into(), serde_json::json!(spec.files.len()));
+    top.insert("items".into(), serde_json::json!(spec.source.item_count()));
+    if let Some(graph) = graph {
+        top.insert("states".into(), serde_json::json!(graph.states.len()));
+        top.insert("transitions".into(), serde_json::json!(graph.edge_count()));
+    } else {
+        top.insert("engine".into(), serde_json::json!("bmc"));
+    }
+    top.insert("properties".into(), serde_json::Value::Array(properties));
+    top.insert("diagnostics".into(), serde_json::json!([]));
+    println!("{}", serde_json::Value::Object(top));
 }
 
 fn format_state(graph: &ModelGraph, state: &crate::model::State) -> String {
@@ -314,6 +440,52 @@ fn format_state(graph: &ModelGraph, state: &crate::model::State) -> String {
         .map(|(name, value)| format!("{name} = {value}"))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn format_state_named(names: &[String], state: &crate::model::State) -> String {
+    names
+        .iter()
+        .zip(&state.values)
+        .map(|(name, value)| format!("{name} = {value}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn bmc_variable_names(spec: &LoadedSpec, graph: Option<&ModelGraph>) -> Vec<String> {
+    if let Some(graph) = graph {
+        return graph.variables.clone();
+    }
+    spec.source
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            crate::syntax::Item::Var(decl) => Some(decl.name.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn counterexample_to_json_named(
+    names: &[String],
+    counterexample: &crate::checker::Counterexample,
+) -> serde_json::Value {
+    let states = counterexample
+        .states
+        .iter()
+        .map(|state| {
+            let mut obj = serde_json::Map::new();
+            for (name, value) in names.iter().zip(&state.values) {
+                obj.insert(name.clone(), serde_json::json!(value));
+            }
+            serde_json::Value::Object(obj)
+        })
+        .collect::<Vec<_>>();
+    let mut object = serde_json::Map::new();
+    object.insert("states".into(), serde_json::Value::Array(states));
+    if let Some(cycle_start) = counterexample.cycle_start {
+        object.insert("cycle_start".into(), serde_json::json!(cycle_start));
+    }
+    serde_json::Value::Object(object)
 }
 
 fn load_and_parse(path: &Path) -> Result<SourceFile> {
@@ -339,9 +511,9 @@ fn exit_code(err: &CaelumError) -> u8 {
     match err {
         CaelumError::Parse { .. } => 2,
         CaelumError::Semantic { .. } => 3,
-        CaelumError::ReadFile { .. } | CaelumError::InvalidExtension { .. } | CaelumError::Import { .. } => {
-            4
-        }
+        CaelumError::ReadFile { .. }
+        | CaelumError::InvalidExtension { .. }
+        | CaelumError::Import { .. } => 4,
         CaelumError::Model { .. } => 5,
         CaelumError::Unsupported { .. } => 6,
     }
