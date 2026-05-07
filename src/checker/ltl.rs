@@ -19,6 +19,8 @@ pub enum CheckStatus {
     Pass,
     Fail,
     Skipped,
+    /// Property is proven invariant by k-induction (BMC `--prove`).
+    Certified,
 }
 
 #[derive(Debug, Clone, Serialize)]

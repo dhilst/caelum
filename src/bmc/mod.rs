@@ -60,7 +60,30 @@ pub fn check_with_bmc(
     let mut results = Vec::new();
     for property in &spec.properties {
         let mut solver = make_solver(backend);
-        let result = unroll::check_property_with_solver(&spec, property, options, solver.as_mut())?;
+        let mut result =
+            unroll::check_property_with_solver(&spec, property, options, solver.as_mut())?;
+
+        // If the base case passed and the user asked for proof, try k-induction.
+        if options.prove
+            && result.status == CheckStatus::Pass
+            && unroll::property_eligible_for_induction(property)
+        {
+            let mut induction_solver = make_solver(backend);
+            match unroll::check_induction(&spec, property, options, induction_solver.as_mut())? {
+                unroll::InductionOutcome::Holds => {
+                    result.status = CheckStatus::Certified;
+                }
+                unroll::InductionOutcome::Inconclusive => {
+                    let note = format!(
+                        "k-induction at k={} inconclusive; bounded pass only",
+                        options.depth
+                    );
+                    result.note = Some(note);
+                }
+                unroll::InductionOutcome::NotApplicable => {}
+            }
+        }
+
         results.push(result);
     }
 
@@ -86,7 +109,26 @@ mod tests {
     fn check(source: &str, depth: usize) -> CheckReport {
         let file = parse_source(source).expect("parse");
         check_source_file(&file).expect("sema");
-        check_with_bmc(&file, &BmcOptions { depth }, SolverBackend::Varisat).expect("bmc")
+        check_with_bmc(
+            &file,
+            &BmcOptions {
+                depth,
+                prove: false,
+            },
+            SolverBackend::Varisat,
+        )
+        .expect("bmc")
+    }
+
+    fn prove(source: &str, depth: usize) -> CheckReport {
+        let file = parse_source(source).expect("parse");
+        check_source_file(&file).expect("sema");
+        check_with_bmc(
+            &file,
+            &BmcOptions { depth, prove: true },
+            SolverBackend::Varisat,
+        )
+        .expect("bmc")
     }
 
     #[test]
@@ -198,9 +240,8 @@ mod tests {
     }
 
     #[test]
-    fn skips_nested_temporal() {
-        // `□ (x = 0 → ◇ (x = 1))` is a response pattern, deeper than v2's
-        // single-level grammar; must skip.
+    fn handles_response_pattern() {
+        // `□ (x = 0 → ◇ (x = 1))` — response pattern recognised in v3.
         let report = check(
             r"
             let x: 0..2
@@ -210,7 +251,60 @@ mod tests {
             ",
             5,
         );
-        assert_eq!(report.properties[0].status, CheckStatus::Skipped);
+        assert_eq!(report.properties[0].status, CheckStatus::Pass);
+    }
+
+    #[test]
+    fn fails_response_when_target_unreachable() {
+        // From x = 0 the system reaches only x = 1 (and stays). The trigger
+        // x = 2 cannot fire from any reachable state, so the property is
+        // vacuously true; the false counterpart is asserting target = x=99.
+        let report = check(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition stay_zero { x = 0 ∧ x' = 1 }
+            transition stay_one  { x = 1 ∧ x' = 1 }
+            transition stay_two  { x = 2 ∧ x' = 2 }
+            property response { □ (x = 1 → ◇ (x = 2)) }
+            ",
+            6,
+        );
+        assert_eq!(report.properties[0].status, CheckStatus::Fail);
+    }
+
+    #[test]
+    fn certifies_inductive_safety() {
+        // `□ (x ≤ 2)` is genuinely 1-inductive on this counter:  any state
+        // satisfying x ≤ 2 transitions to x' = (x + 1) mod 3 ∈ {0, 1, 2},
+        // which also satisfies the bound.
+        let report = prove(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 3 }
+            property bounded { □ (x <= 2) }
+            ",
+            2,
+        );
+        assert_eq!(report.properties[0].status, CheckStatus::Certified);
+    }
+
+    #[test]
+    fn induction_skipped_for_liveness() {
+        // Liveness properties are not eligible for k-induction; --prove
+        // must leave them as the base-case PASS without crashing.
+        let report = prove(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 3 }
+            property recurrent_zero { □ ◇ (x = 0) }
+            ",
+            5,
+        );
+        assert_eq!(report.properties[0].status, CheckStatus::Pass);
+        assert!(report.properties[0].note.is_none());
     }
 
     #[test]
