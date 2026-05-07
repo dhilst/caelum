@@ -18,6 +18,7 @@ pub struct CheckReport {
 pub enum CheckStatus {
     Pass,
     Fail,
+    Skipped,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -27,6 +28,8 @@ pub struct PropertyResult {
     pub status: CheckStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub counterexample: Option<Counterexample>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -62,6 +65,7 @@ pub fn check_properties(file: &SourceFile, graph: &ModelGraph) -> Result<CheckRe
             kind: property.kind,
             status,
             counterexample,
+            note: None,
         });
     }
 
@@ -895,13 +899,37 @@ mod tests {
 
         assert_eq!(report.status, CheckStatus::Fail);
         // Properties that should pass
-        assert_eq!(report.properties[0].status, CheckStatus::Pass, "x >= 0 should pass");
-        assert_eq!(report.properties[1].status, CheckStatus::Pass, "x <= 4 should pass");
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Pass,
+            "x >= 0 should pass"
+        );
+        assert_eq!(
+            report.properties[1].status,
+            CheckStatus::Pass,
+            "x <= 4 should pass"
+        );
         // Properties that should fail
-        assert_eq!(report.properties[2].status, CheckStatus::Fail, "x < 4 should fail");
-        assert_eq!(report.properties[3].status, CheckStatus::Fail, "x > 0 should fail");
-        assert_eq!(report.properties[4].status, CheckStatus::Fail, "x = 0 should fail");
-        assert_eq!(report.properties[5].status, CheckStatus::Fail, "x != 4 should fail");
+        assert_eq!(
+            report.properties[2].status,
+            CheckStatus::Fail,
+            "x < 4 should fail"
+        );
+        assert_eq!(
+            report.properties[3].status,
+            CheckStatus::Fail,
+            "x > 0 should fail"
+        );
+        assert_eq!(
+            report.properties[4].status,
+            CheckStatus::Fail,
+            "x = 0 should fail"
+        );
+        assert_eq!(
+            report.properties[5].status,
+            CheckStatus::Fail,
+            "x != 4 should fail"
+        );
         // Failing properties should have counterexamples
         for i in 2..=5 {
             assert!(
@@ -932,9 +960,17 @@ mod tests {
 
         assert_eq!(report.status, CheckStatus::Fail);
         // x never reaches 2 in the reachable states (only 0 and 1 reachable)
-        assert_eq!(report.properties[0].status, CheckStatus::Pass, "x != 2 should pass");
+        assert_eq!(
+            report.properties[0].status,
+            CheckStatus::Pass,
+            "x != 2 should pass"
+        );
         // x starts at 0, so x != 0 immediately fails
-        assert_eq!(report.properties[1].status, CheckStatus::Fail, "x != 0 should fail");
+        assert_eq!(
+            report.properties[1].status,
+            CheckStatus::Fail,
+            "x != 0 should fail"
+        );
         let cex = report.properties[1]
             .counterexample
             .as_ref()
@@ -1271,10 +1307,7 @@ mod tests {
             Value::Bool(v) => v,
             ref other => panic!("expected Bool, got {:?}", other),
         };
-        assert!(
-            last_b,
-            "counterexample should reach a state where b = true"
-        );
+        assert!(last_b, "counterexample should reach a state where b = true");
     }
 
     #[test]
@@ -1361,18 +1394,22 @@ mod tests {
 
         // Overall status must be Fail since at least one property fails
         assert_eq!(report.status, CheckStatus::Fail);
-        assert_eq!(report.properties.len(), 8, "should have exactly 8 properties");
+        assert_eq!(
+            report.properties.len(),
+            8,
+            "should have exactly 8 properties"
+        );
 
         // Verify the exact pass/fail pattern
         let expected: Vec<(&str, CheckStatus)> = vec![
-            ("safety_pass",   CheckStatus::Pass),
+            ("safety_pass", CheckStatus::Pass),
             ("liveness_pass", CheckStatus::Pass),
-            ("next_pass",     CheckStatus::Pass),
-            ("until_pass",    CheckStatus::Pass),
-            ("safety_fail",   CheckStatus::Fail),
+            ("next_pass", CheckStatus::Pass),
+            ("until_pass", CheckStatus::Pass),
+            ("safety_fail", CheckStatus::Fail),
             ("liveness_fail", CheckStatus::Fail),
-            ("next_fail",     CheckStatus::Fail),
-            ("until_fail",    CheckStatus::Fail),
+            ("next_fail", CheckStatus::Fail),
+            ("until_fail", CheckStatus::Fail),
         ];
 
         for (i, (name, status)) in expected.iter().enumerate() {
@@ -1444,26 +1481,52 @@ mod tests {
 
         // Full report expectations: 3 pass, 2 fail
         assert_eq!(full_report.properties.len(), 5);
-        assert_eq!(full_report.properties[0].status, CheckStatus::Pass, "reaches_two should pass");
-        assert_eq!(full_report.properties[1].status, CheckStatus::Pass, "stays_in_range should pass");
-        assert_eq!(full_report.properties[2].status, CheckStatus::Pass, "next_is_one should pass");
-        assert_eq!(full_report.properties[3].status, CheckStatus::Fail, "always_zero_fails should fail");
-        assert_eq!(full_report.properties[4].status, CheckStatus::Fail, "reaches_five should fail");
-
-        // Subset report expectations: 1 pass, 1 fail
-        assert_eq!(subset_report.properties.len(), 2);
-        assert_eq!(subset_report.properties[0].status, CheckStatus::Pass, "next_is_one should pass in subset");
-        assert_eq!(subset_report.properties[1].status, CheckStatus::Fail, "always_zero_fails should fail in subset");
-
-        // The shared properties must produce the same results regardless of context
+        assert_eq!(
+            full_report.properties[0].status,
+            CheckStatus::Pass,
+            "reaches_two should pass"
+        );
+        assert_eq!(
+            full_report.properties[1].status,
+            CheckStatus::Pass,
+            "stays_in_range should pass"
+        );
         assert_eq!(
             full_report.properties[2].status,
-            subset_report.properties[0].status,
-            "next_is_one result must be identical in full and subset reports"
+            CheckStatus::Pass,
+            "next_is_one should pass"
         );
         assert_eq!(
             full_report.properties[3].status,
+            CheckStatus::Fail,
+            "always_zero_fails should fail"
+        );
+        assert_eq!(
+            full_report.properties[4].status,
+            CheckStatus::Fail,
+            "reaches_five should fail"
+        );
+
+        // Subset report expectations: 1 pass, 1 fail
+        assert_eq!(subset_report.properties.len(), 2);
+        assert_eq!(
+            subset_report.properties[0].status,
+            CheckStatus::Pass,
+            "next_is_one should pass in subset"
+        );
+        assert_eq!(
             subset_report.properties[1].status,
+            CheckStatus::Fail,
+            "always_zero_fails should fail in subset"
+        );
+
+        // The shared properties must produce the same results regardless of context
+        assert_eq!(
+            full_report.properties[2].status, subset_report.properties[0].status,
+            "next_is_one result must be identical in full and subset reports"
+        );
+        assert_eq!(
+            full_report.properties[3].status, subset_report.properties[1].status,
             "always_zero_fails result must be identical in full and subset reports"
         );
     }
@@ -2451,7 +2514,11 @@ mod tests {
         )
         .expect("check should run");
 
-        assert_eq!(report.properties.len(), 8, "should have exactly 8 properties");
+        assert_eq!(
+            report.properties.len(),
+            8,
+            "should have exactly 8 properties"
+        );
 
         // Overall status must be Fail since some properties fail
         assert_eq!(report.status, CheckStatus::Fail);
@@ -2597,10 +2664,7 @@ mod tests {
                 Value::Int(v) => *v,
                 other => panic!("expected Int for cnt, got {:?}", other),
             };
-            assert_ne!(
-                cnt_val, 4,
-                "counterexample should never reach cnt = 4"
-            );
+            assert_ne!(cnt_val, 4, "counterexample should never reach cnt = 4");
         }
     }
 
@@ -2649,7 +2713,11 @@ mod tests {
 
         // Overall status must be Fail (some properties fail)
         assert_eq!(report.status, CheckStatus::Fail);
-        assert_eq!(report.properties.len(), 6, "should have exactly 6 properties");
+        assert_eq!(
+            report.properties.len(),
+            6,
+            "should have exactly 6 properties"
+        );
 
         // 1. always (ovf = true -> cnt = 0) PASS: ovf=true only at cnt=0
         assert_eq!(
