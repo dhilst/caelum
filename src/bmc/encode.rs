@@ -122,6 +122,18 @@ impl<'a> Encoder<'a> {
         self.solver.add_clause(&[lit]);
     }
 
+    /// Allocate a fresh propositional variable (used by callers that need
+    /// to add their own clauses, e.g. lasso closure literals).
+    pub fn solver_new_var(&mut self) -> SatLit {
+        self.solver.new_var()
+    }
+
+    /// Add a raw CNF clause, exposed for callers that build their own
+    /// constraints over solver-allocated literals.
+    pub fn add_clause(&mut self, clause: &[SatLit]) {
+        self.solver.add_clause(clause);
+    }
+
     /// Boolean and: returns a fresh literal `r` with `r ↔ a ∧ b`.
     pub fn band(&mut self, a: SatLit, b: SatLit) -> SatLit {
         let r = self.solver.new_var();
@@ -160,12 +172,68 @@ impl<'a> Encoder<'a> {
         r
     }
 
+    /// Big and: introduce one literal `r` with `r ↔ ⋀ lits`.
+    pub fn band_many(&mut self, lits: &[SatLit]) -> SatLit {
+        if lits.is_empty() {
+            return self.true_lit;
+        }
+        if lits.len() == 1 {
+            return lits[0];
+        }
+        let r = self.solver.new_var();
+        for &l in lits {
+            self.solver.add_clause(&[-r, l]);
+        }
+        let mut clause: Vec<SatLit> = lits.iter().map(|l| -l).collect();
+        clause.push(r);
+        self.solver.add_clause(&clause);
+        r
+    }
+
     /// Iff: r ↔ (a ↔ b).
     pub fn biff(&mut self, a: SatLit, b: SatLit) -> SatLit {
         // (a ∧ b) ∨ (¬a ∧ ¬b)
         let pos = self.band(a, b);
         let neg = self.band(-a, -b);
         self.bor(pos, neg)
+    }
+
+    /// Encode equality between two state-variable SymVals.  Used by the
+    /// lasso wraparound to assert that the loop closure state matches some
+    /// earlier state.
+    pub fn symval_equal(&mut self, a: &SymVal, b: &SymVal) -> Result<SatLit> {
+        match (a, b) {
+            (SymVal::Bool(la), SymVal::Bool(lb)) => Ok(self.biff(*la, *lb)),
+            (SymVal::Int(va), SymVal::Int(vb)) => {
+                let mut conjs = Vec::new();
+                for (val_a, lit_a) in va {
+                    for (val_b, lit_b) in vb {
+                        if val_a == val_b {
+                            conjs.push(self.band(*lit_a, *lit_b));
+                        }
+                    }
+                }
+                Ok(self.bor_many(&conjs))
+            }
+            (SymVal::Enum { values: va, .. }, SymVal::Enum { values: vb, .. }) => {
+                let mut conjs = Vec::new();
+                for (val_a, lit_a) in va {
+                    for (val_b, lit_b) in vb {
+                        if val_a == val_b {
+                            conjs.push(self.band(*lit_a, *lit_b));
+                        }
+                    }
+                }
+                Ok(self.bor_many(&conjs))
+            }
+            _ => Err(CaelumError::Model {
+                message: format!(
+                    "BMC encoder: cannot equate {} with {} between states",
+                    a.kind_label(),
+                    b.kind_label()
+                ),
+            }),
+        }
     }
 
     /// Encode an expression at the given time, returning a SymVal.

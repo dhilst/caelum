@@ -129,19 +129,88 @@ mod tests {
     }
 
     #[test]
-    fn skips_unsupported_liveness() {
+    fn passes_eventually_with_lasso() {
+        // x cycles 0 -> 1 -> 2 -> 0; ◇ (x = 2) holds because x = 2 is reached.
         let report = check(
             r"
             let x: 0..2
             init { x = 0 }
             transition step { x' = (x + 1) mod 3 }
-            property eventually_zero { ◇ (x = 0) }
+            property reaches_two { ◇ (x = 2) }
             ",
             5,
         );
-        let prop = &report.properties[0];
-        assert_eq!(prop.status, CheckStatus::Skipped);
-        assert!(prop.note.as_deref().unwrap_or("").contains("eventually"));
+        assert_eq!(report.properties[0].status, CheckStatus::Pass);
+    }
+
+    #[test]
+    fn passes_recurrence_with_lasso() {
+        // From any state in the 3-cycle we keep returning to x = 0.
+        let report = check(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 3 }
+            property recurrent_zero { □ ◇ (x = 0) }
+            ",
+            5,
+        );
+        assert_eq!(report.properties[0].status, CheckStatus::Pass);
+    }
+
+    #[test]
+    fn fails_recurrence_when_trapped() {
+        // The system has a trap state at x = 1 reachable from x = 0; once
+        // reached, x stays at 1 forever, so □ ◇ (x = 0) is false from t = 1.
+        let report = check(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition stay_zero { x = 0 ∧ x' = 1 }
+            transition stay_one  { x = 1 ∧ x' = 1 }
+            transition stay_two  { x = 2 ∧ x' = 2 }
+            property recurrent_zero { □ ◇ (x = 0) }
+            ",
+            6,
+        );
+        assert_eq!(report.properties[0].status, CheckStatus::Fail);
+        let trace = report.properties[0]
+            .counterexample
+            .as_ref()
+            .expect("counterexample");
+        assert!(trace.cycle_start.is_some(), "lasso must report cycle_start");
+    }
+
+    #[test]
+    fn passes_until_when_witnessed() {
+        // φ U ψ where φ = (x ≥ 0), ψ = (x = 2): φ holds at every step (it's
+        // a tautology in 0..2) and ψ is reached at step 2.
+        let report = check(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 3 }
+            property guard_until { (x >= 0) until (x = 2) }
+            ",
+            5,
+        );
+        assert_eq!(report.properties[0].status, CheckStatus::Pass);
+    }
+
+    #[test]
+    fn skips_nested_temporal() {
+        // `□ (x = 0 → ◇ (x = 1))` is a response pattern, deeper than v2's
+        // single-level grammar; must skip.
+        let report = check(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 3 }
+            property response { □ (x = 0 → ◇ (x = 1)) }
+            ",
+            5,
+        );
+        assert_eq!(report.properties[0].status, CheckStatus::Skipped);
     }
 
     #[test]
