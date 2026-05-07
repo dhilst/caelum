@@ -11,9 +11,17 @@ LTL model checker.
 
 ## Harness
 
-1. All tests must pass (`cargo test`)
-2. All `.lum` files in `examples/` and `refinement/specs/` must pass (`cargo run -- <file>` exits 0)
-3. Harness is executed before `git push` as a pre-push hook
+- CI harness binary at `ci/src/main.rs` — run with `cargo run --manifest-path ci/Cargo.toml`
+- Runs `cargo test` and all `examples/**/*.lum` files in parallel (threadpool sized to CPU count)
+- Each process has a 60s timeout; exits 0 only if all tests and examples pass
+- Pre-push hook (`git push`) invokes the harness automatically
+- GitHub Actions CI runs the harness on pull requests
+
+## Examples layout
+
+- `examples/simple/` — small standalone specs
+- `examples/game_of_life/` — Game of Life grid specs
+- `examples/refinement/` — iterative refinement rounds
 
 ## Documentation
 
