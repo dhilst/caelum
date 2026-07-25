@@ -59,6 +59,16 @@ Options
      - Description
    * - ``--format human|json``
      - Output format (default: ``human``)
+   * - ``--engine explicit|bmc``
+     - Checking engine (default: ``explicit``). ``bmc`` runs bounded model checking.
+   * - ``--solver varisat|cadical|z3``
+     - SAT backend for the ``bmc`` engine (default: ``z3``). Requires the
+       matching Cargo feature to be compiled in; ``z3`` links the system
+       ``libz3`` (install ``libz3-dev`` / the ``z3`` package).
+   * - ``--bmc-depth N``
+     - Unrolling depth for the ``bmc`` engine (default: 50)
+   * - ``--prove`` (alias ``--k-induction``)
+     - Attempt k-induction to certify safety properties under ``--engine bmc``
    * - ``--show-trace``
      - Display counterexample traces on failure
    * - ``--dump-graph``

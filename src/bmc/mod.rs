@@ -27,6 +27,8 @@ pub enum SolverBackend {
     Varisat,
     #[cfg(feature = "bmc-cadical")]
     Cadical,
+    #[cfg(feature = "bmc-z3")]
+    Z3,
 }
 
 impl Default for SolverBackend {
@@ -39,6 +41,14 @@ impl Default for SolverBackend {
         {
             Self::Cadical
         }
+        #[cfg(all(
+            not(feature = "bmc-varisat"),
+            not(feature = "bmc-cadical"),
+            feature = "bmc-z3"
+        ))]
+        {
+            Self::Z3
+        }
     }
 }
 
@@ -48,6 +58,8 @@ fn make_solver(backend: SolverBackend) -> Box<dyn solver::Solver> {
         SolverBackend::Varisat => Box::new(solver::varisat_backend::VarisatSolver::new()),
         #[cfg(feature = "bmc-cadical")]
         SolverBackend::Cadical => Box::new(solver::cadical_backend::CadicalSolver::new()),
+        #[cfg(feature = "bmc-z3")]
+        SolverBackend::Z3 => Box::new(solver::z3_backend::Z3Solver::new()),
     }
 }
 
@@ -335,5 +347,106 @@ mod tests {
             5,
         );
         assert_eq!(report.properties[0].status, CheckStatus::Pass);
+    }
+}
+
+#[cfg(all(test, feature = "bmc-z3"))]
+mod z3_tests {
+    //! The Z3 backend plugs into the same CNF encoder as varisat/cadical, so
+    //! it must produce identical verdicts. These mirror a representative slice
+    //! of the varisat suite (safety fail with counterexample, safety pass,
+    //! liveness/lasso) driven through `SolverBackend::Z3`.
+    use super::*;
+    use crate::checker::CheckStatus;
+    use crate::sema::check_source_file;
+    use crate::syntax::parse_source;
+
+    fn check(source: &str, depth: usize) -> CheckReport {
+        let file = parse_source(source).expect("parse");
+        check_source_file(&file).expect("sema");
+        check_with_bmc(
+            &file,
+            &BmcOptions {
+                depth,
+                prove: false,
+            },
+            SolverBackend::Z3,
+        )
+        .expect("bmc")
+    }
+
+    #[test]
+    fn finds_safety_violation_with_counterexample() {
+        let report = check(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 3 }
+            property never_two { □ (x != 2) }
+            ",
+            5,
+        );
+        assert_eq!(report.status, CheckStatus::Fail);
+        let prop = &report.properties[0];
+        assert_eq!(prop.status, CheckStatus::Fail);
+        let trace = prop.counterexample.as_ref().expect("counterexample");
+        let saw_two = trace
+            .states
+            .iter()
+            .any(|s| matches!(s.values.first(), Some(crate::model::Value::Int(2))));
+        assert!(saw_two);
+    }
+
+    #[test]
+    fn passes_safety_within_depth() {
+        let report = check(
+            r"
+            let x: 0..3
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 4 }
+            property in_range { □ (x >= 0 ∧ x <= 3) }
+            ",
+            8,
+        );
+        assert_eq!(report.status, CheckStatus::Pass);
+        assert_eq!(report.properties[0].status, CheckStatus::Pass);
+    }
+
+    #[test]
+    fn passes_recurrence_with_lasso() {
+        let report = check(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 3 }
+            property recurrent_zero { □ ◇ (x = 0) }
+            ",
+            5,
+        );
+        assert_eq!(report.properties[0].status, CheckStatus::Pass);
+    }
+
+    #[test]
+    fn certifies_inductive_safety() {
+        let file = parse_source(
+            r"
+            let x: 0..2
+            init { x = 0 }
+            transition step { x' = (x + 1) mod 3 }
+            property bounded { □ (x <= 2) }
+            ",
+        )
+        .expect("parse");
+        check_source_file(&file).expect("sema");
+        let report = check_with_bmc(
+            &file,
+            &BmcOptions {
+                depth: 2,
+                prove: true,
+            },
+            SolverBackend::Z3,
+        )
+        .expect("bmc");
+        assert_eq!(report.properties[0].status, CheckStatus::Certified);
     }
 }

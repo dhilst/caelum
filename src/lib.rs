@@ -1,4 +1,8 @@
-#[cfg(any(feature = "bmc-varisat", feature = "bmc-cadical"))]
+#[cfg(any(
+    feature = "bmc-varisat",
+    feature = "bmc-cadical",
+    feature = "bmc-z3"
+))]
 pub mod bmc;
 pub mod checker;
 pub mod cli;

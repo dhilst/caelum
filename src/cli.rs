@@ -44,7 +44,7 @@ pub struct Cli {
     #[arg(long, value_enum, default_value_t = Engine::Explicit, global = true)]
     engine: Engine,
 
-    #[arg(long, value_enum, default_value_t = SolverChoice::Varisat, global = true)]
+    #[arg(long, value_enum, default_value_t = SolverChoice::Z3, global = true)]
     solver: SolverChoice,
 
     #[arg(long = "bmc-depth", default_value_t = 50, global = true)]
@@ -89,6 +89,7 @@ enum Engine {
 enum SolverChoice {
     Varisat,
     Cadical,
+    Z3,
 }
 
 #[derive(Debug, Args)]
@@ -231,7 +232,7 @@ fn check(
     }
 }
 
-#[cfg(any(feature = "bmc-varisat", feature = "bmc-cadical"))]
+#[cfg(any(feature = "bmc-varisat", feature = "bmc-cadical", feature = "bmc-z3"))]
 fn check_bmc(
     spec: &LoadedSpec,
     format: OutputFormat,
@@ -256,6 +257,14 @@ fn check_bmc(
                 message: "cadical backend not compiled in (enable feature `bmc-cadical`)".into(),
             })
         }
+        #[cfg(feature = "bmc-z3")]
+        SolverChoice::Z3 => SolverBackend::Z3,
+        #[cfg(not(feature = "bmc-z3"))]
+        SolverChoice::Z3 => {
+            return Err(CaelumError::Unsupported {
+                message: "z3 backend not compiled in (enable feature `bmc-z3`)".into(),
+            })
+        }
     };
 
     let opts = BmcOptions {
@@ -270,7 +279,7 @@ fn check_bmc(
     Ok(report.status != CheckStatus::Fail)
 }
 
-#[cfg(not(any(feature = "bmc-varisat", feature = "bmc-cadical")))]
+#[cfg(not(any(feature = "bmc-varisat", feature = "bmc-cadical", feature = "bmc-z3")))]
 fn check_bmc(
     _spec: &LoadedSpec,
     _format: OutputFormat,
@@ -278,8 +287,9 @@ fn check_bmc(
     _show_trace: bool,
 ) -> Result<bool> {
     Err(CaelumError::Unsupported {
-        message: "BMC engine not compiled in; rebuild with --features bmc-varisat or bmc-cadical"
-            .into(),
+        message:
+            "BMC engine not compiled in; rebuild with --features bmc-varisat, bmc-cadical or bmc-z3"
+                .into(),
     })
 }
 

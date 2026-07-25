@@ -89,6 +89,86 @@ pub mod varisat_backend {
     }
 }
 
+#[cfg(feature = "bmc-z3")]
+pub mod z3_backend {
+    use super::*;
+    use z3::ast::Bool;
+    use z3::{Model, SatResult, Solver as Z3Backend};
+
+    /// Z3 used purely as a propositional SAT backend: each DIMACS variable is
+    /// a fresh boolean constant, each clause a disjunction asserted into the
+    /// solver. `vars[i]` corresponds to DIMACS variable `i + 1`.
+    pub struct Z3Solver {
+        solver: Z3Backend,
+        vars: Vec<Bool>,
+        model: Option<Model>,
+    }
+
+    impl Z3Solver {
+        pub fn new() -> Self {
+            Self {
+                solver: Z3Backend::new(),
+                vars: Vec::new(),
+                model: None,
+            }
+        }
+
+        fn lit(&self, l: SatLit) -> Bool {
+            let var = &self.vars[(l.unsigned_abs() as usize) - 1];
+            if l > 0 {
+                var.clone()
+            } else {
+                var.not()
+            }
+        }
+    }
+
+    impl Default for Z3Solver {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl Solver for Z3Solver {
+        fn new_var(&mut self) -> i32 {
+            self.vars.push(Bool::fresh_const("v"));
+            self.vars.len() as i32
+        }
+
+        fn add_clause(&mut self, clause: &[SatLit]) {
+            if clause.is_empty() {
+                // An empty clause is unsatisfiable.
+                self.solver.assert(Bool::from_bool(false));
+                return;
+            }
+            let lits: Vec<Bool> = clause.iter().map(|&l| self.lit(l)).collect();
+            self.solver.assert(Bool::or(&lits));
+        }
+
+        fn solve(&mut self) -> Result<bool> {
+            match self.solver.check() {
+                SatResult::Sat => {
+                    self.model = self.solver.get_model();
+                    Ok(true)
+                }
+                SatResult::Unsat => Ok(false),
+                SatResult::Unknown => Err(CaelumError::Model {
+                    message: "z3 solver returned unknown".into(),
+                }),
+            }
+        }
+
+        fn model_value(&self, var: i32) -> bool {
+            assert!(var > 0, "model_value expects positive variable index");
+            self.model
+                .as_ref()
+                .and_then(|m| m.eval(&self.vars[(var as usize) - 1], true))
+                .and_then(|b| b.as_bool())
+                .unwrap_or(false)
+        }
+    }
+}
+
 #[cfg(feature = "bmc-cadical")]
 pub mod cadical_backend {
     use super::*;
