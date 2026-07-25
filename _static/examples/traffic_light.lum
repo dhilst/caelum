@@ -1,0 +1,48 @@
+module examples.traffic_light
+
+let color : enum { red, green, yellow }
+let timer ∈ 0..5
+
+init {
+  color = red ∧ timer = 5
+}
+
+transition tick {
+  timer > 0 ∧ timer' = timer - 1 ∧ color' = color
+}
+
+transition go_green {
+  color = red ∧ timer = 0 ∧ color' = green ∧ timer' = 5
+}
+
+transition go_yellow {
+  color = green ∧ timer = 0 ∧ color' = yellow ∧ timer' = 2
+}
+
+transition go_red {
+  color = yellow ∧ timer = 0 ∧ color' = red ∧ timer' = 5
+}
+
+property timer_bounded {
+  □ (timer ≥ 0 ∧ timer ≤ 5)
+}
+
+property always_cycles {
+  □ ◇ (color = red)
+}
+
+property green_follows_red {
+  □ ((color = red ∧ timer = 0) → ◯ (color = green))
+}
+
+property yellow_follows_green {
+  □ ((color = green ∧ timer = 0) → ◯ (color = yellow))
+}
+
+property red_follows_yellow {
+  □ ((color = yellow ∧ timer = 0) → ◯ (color = red))
+}
+
+property yellow_is_short {
+  □ (color = yellow → timer ≤ 2)
+}

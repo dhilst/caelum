@@ -25,4 +25,5 @@ Features
    language-guide
    cli-reference
    examples
+   playground
    specification

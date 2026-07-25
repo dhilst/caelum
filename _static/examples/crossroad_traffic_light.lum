@@ -1,0 +1,100 @@
+module examples.crossroad_traffic_light
+
+type Color = enum { red, green, yellow }
+
+let traf1 ∈ Color
+let traf2 ∈ Color
+let timer ∈ 0..5
+
+init {
+  traf1 = green ∧ traf2 = red ∧ timer = 5
+}
+
+// timer counts down
+transition tick {
+  timer > 0 ∧ timer' = timer - 1 ∧ traf1' = traf1 ∧ traf2' = traf2
+}
+
+// traf1 green expires → yellow
+transition traf1_to_yellow {
+  traf1 = green ∧ timer = 0 ∧ traf1' = yellow ∧ traf2' = red ∧ timer' = 2
+}
+
+// traf1 yellow expires → red, traf2 gets green
+transition swap_to_traf2 {
+  traf1 = yellow ∧ timer = 0 ∧ traf1' = red ∧ traf2' = green ∧ timer' = 5
+}
+
+// traf2 green expires → yellow
+transition traf2_to_yellow {
+  traf2 = green ∧ timer = 0 ∧ traf2' = yellow ∧ traf1' = red ∧ timer' = 2
+}
+
+// traf2 yellow expires → red, traf1 gets green
+transition swap_to_traf1 {
+  traf2 = yellow ∧ timer = 0 ∧ traf2' = red ∧ traf1' = green ∧ timer' = 5
+}
+
+// --- Safety ---
+
+// never both green
+property mutual_exclusion {
+  □ ¬ (traf1 = green ∧ traf2 = green)
+}
+
+// never both yellow
+property no_both_yellow {
+  □ ¬ (traf1 = yellow ∧ traf2 = yellow)
+}
+
+// if one is not red, the other must be red
+property one_moving_at_most {
+  □ (traf1 ≠ red → traf2 = red)
+}
+
+property timer_bounded {
+  □ (timer ≥ 0 ∧ timer ≤ 5)
+}
+
+// yellow always has short timer
+property yellow_is_short {
+  □ ((traf1 = yellow ∨ traf2 = yellow) → timer ≤ 2)
+}
+
+// --- Liveness ---
+
+property traf1_eventually_green {
+  □ ◇ (traf1 = green)
+}
+
+property traf2_eventually_green {
+  □ ◇ (traf2 = green)
+}
+
+property always_eventually_swap {
+  □ ◇ (traf1 = red ∧ traf2 = green)
+}
+
+// --- Fairness ---
+
+// after traf1 is green, traf2 will eventually get green
+property traf1_green_implies_traf2_next {
+  □ (traf1 = green → ◇ (traf2 = green))
+}
+
+// after traf2 is green, traf1 will eventually get green
+property traf2_green_implies_traf1_next {
+  □ (traf2 = green → ◇ (traf1 = green))
+}
+
+// --- Invalid (expected to fail) ---
+
+// both green is unreachable
+invalid both_green {
+  ◇ (traf1 = green ∧ traf2 = green)
+}
+
+// both green eventually is impossible
+invalid both_green_eventually {
+  □ ◇ (traf1 = green ∧ traf2 = green)
+}
