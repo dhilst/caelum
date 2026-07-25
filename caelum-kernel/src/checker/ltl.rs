@@ -1,11 +1,13 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use serde::Serialize;
 
 use crate::diagnostics::Result;
 use crate::model::eval::{eval_expr, expect_bool};
 use crate::model::{ModelGraph, State};
-use crate::syntax::{BinaryOp, Expr, Item, PropertyBlock, PropertyKind, SourceFile, UnaryOp};
+use crate::syntax::{
+    BinaryOp, Expr, FairnessStrength, Item, PropertyBlock, PropertyKind, SourceFile, UnaryOp,
+};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CheckReport {
@@ -39,13 +41,56 @@ pub struct Counterexample {
     pub states: Vec<State>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cycle_start: Option<usize>,
+    /// Per-step transition labels: `transitions[i]` names the transition that
+    /// fired to reach `states[i]` from `states[i-1]` (so `transitions[0]` is
+    /// always `None`). Empty when labels were not computed.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub transitions: Vec<Option<String>>,
+}
+
+/// Re-derive per-step transition labels for a decoded trace by evaluating each
+/// transition's relation on consecutive concrete states. Shared by the explicit
+/// and BMC engines so both produce identical labels.
+pub fn label_trace(
+    states: &[State],
+    transitions: &[(String, &Expr)],
+    env: &crate::model::eval::EvalEnv,
+) -> Vec<Option<String>> {
+    states
+        .iter()
+        .enumerate()
+        .map(|(index, state)| {
+            if index == 0 {
+                return None;
+            }
+            firing_transition(&states[index - 1], state, transitions, env)
+        })
+        .collect()
+}
+
+fn firing_transition(
+    current: &State,
+    next: &State,
+    transitions: &[(String, &Expr)],
+    env: &crate::model::eval::EvalEnv,
+) -> Option<String> {
+    transitions.iter().find_map(|(name, expr)| {
+        match eval_expr(expr, env, Some(current), Some(next)) {
+            Ok(value) => expect_bool(value, "transition")
+                .ok()
+                .and_then(|holds| holds.then(|| name.clone())),
+            Err(_) => None,
+        }
+    })
 }
 
 pub fn check_properties(file: &SourceFile, graph: &ModelGraph) -> Result<CheckReport> {
     let mut results = Vec::new();
+    let transitions = transition_relations(file);
+    let fair = Fair::build(file, graph);
 
     for property in properties(file) {
-        let sat = sat_set(&property.expr, graph)?;
+        let sat = sat_set(&property.expr, graph, &fair)?;
         let failing_initial = graph
             .initial_states
             .iter()
@@ -54,10 +99,15 @@ pub fn check_properties(file: &SourceFile, graph: &ModelGraph) -> Result<CheckRe
 
         let (status, counterexample) = match (property.kind, failing_initial) {
             (PropertyKind::Property, None) => (CheckStatus::Pass, None),
-            (PropertyKind::Property, Some(initial)) => (
-                CheckStatus::Fail,
-                Some(counterexample(initial, &property.expr, graph, &sat)?),
-            ),
+            (PropertyKind::Property, Some(initial)) => {
+                let mut cex = if fair.is_empty() {
+                    counterexample(initial, &property.expr, graph, &sat, &fair)?
+                } else {
+                    fair_counterexample(initial, &property.expr, graph, &fair)?
+                };
+                cex.transitions = label_trace(&cex.states, &transitions, &graph.env);
+                (CheckStatus::Fail, Some(cex))
+            }
             (PropertyKind::Invalid, Some(_)) => (CheckStatus::Pass, None),
             (PropertyKind::Invalid, None) => (CheckStatus::Fail, None),
         };
@@ -93,13 +143,24 @@ fn properties(file: &SourceFile) -> impl Iterator<Item = &PropertyBlock> {
     })
 }
 
-fn sat_set(expr: &Expr, graph: &ModelGraph) -> Result<HashSet<usize>> {
+/// Collect `(name, relation)` pairs for every transition, used to label traces.
+fn transition_relations(file: &SourceFile) -> Vec<(String, &Expr)> {
+    file.items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Transition(block) => Some((block.name.clone(), &block.expr)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn sat_set(expr: &Expr, graph: &ModelGraph, fair: &Fair) -> Result<HashSet<usize>> {
     match expr {
         Expr::Unary {
             op: UnaryOp::Not,
             expr,
         } => {
-            let inner = sat_set(expr, graph)?;
+            let inner = sat_set(expr, graph, fair)?;
             Ok(all_states(graph)
                 .difference(&inner)
                 .copied()
@@ -108,16 +169,35 @@ fn sat_set(expr: &Expr, graph: &ModelGraph) -> Result<HashSet<usize>> {
         Expr::Unary {
             op: UnaryOp::Always,
             expr,
-        } => always_set(expr, graph),
+        } => {
+            // `□ ◇ φ` (recurrence) is fairness-sensitive; plain `□ ψ` (safety)
+            // is not — a fairness assumption never removes a safety violation.
+            if !fair.is_empty() {
+                if let Expr::Unary {
+                    op: UnaryOp::Eventually,
+                    expr: phi,
+                } = expr.as_ref()
+                {
+                    return fair_recurrence(phi, graph, fair);
+                }
+            }
+            always_set(expr, graph, fair)
+        }
         Expr::Unary {
             op: UnaryOp::Eventually,
             expr,
-        } => eventually_set(expr, graph),
+        } => {
+            if fair.is_empty() {
+                eventually_set(expr, graph, fair)
+            } else {
+                fair_eventually(expr, graph, fair)
+            }
+        }
         Expr::Unary {
             op: UnaryOp::Next,
             expr,
         } => {
-            let inner = sat_set(expr, graph)?;
+            let inner = sat_set(expr, graph, fair)?;
             Ok(graph
                 .states
                 .iter()
@@ -134,8 +214,8 @@ fn sat_set(expr: &Expr, graph: &ModelGraph) -> Result<HashSet<usize>> {
             op: UnaryOp::Neg, ..
         } => state_formula_set(expr, graph),
         Expr::Binary { op, lhs, rhs } if is_boolean_temporal_binary(*op) => {
-            let lhs = sat_set(lhs, graph)?;
-            let rhs = sat_set(rhs, graph)?;
+            let lhs = sat_set(lhs, graph, fair)?;
+            let rhs = sat_set(rhs, graph, fair)?;
             let all = all_states(graph);
             Ok(match op {
                 BinaryOp::And => lhs.intersection(&rhs).copied().collect(),
@@ -157,7 +237,13 @@ fn sat_set(expr: &Expr, graph: &ModelGraph) -> Result<HashSet<usize>> {
             op: BinaryOp::Until,
             lhs,
             rhs,
-        } => until_set(lhs, rhs, graph),
+        } => {
+            if fair.is_empty() {
+                until_set(lhs, rhs, graph, fair)
+            } else {
+                fair_until(lhs, rhs, graph, fair)
+            }
+        }
         _ => state_formula_set(expr, graph),
     }
 }
@@ -180,8 +266,8 @@ fn state_formula_set(expr: &Expr, graph: &ModelGraph) -> Result<HashSet<usize>> 
     Ok(set)
 }
 
-fn always_set(expr: &Expr, graph: &ModelGraph) -> Result<HashSet<usize>> {
-    let base = sat_set(expr, graph)?;
+fn always_set(expr: &Expr, graph: &ModelGraph, fair: &Fair) -> Result<HashSet<usize>> {
+    let base = sat_set(expr, graph, fair)?;
     let mut set = all_states(graph);
 
     loop {
@@ -199,8 +285,8 @@ fn always_set(expr: &Expr, graph: &ModelGraph) -> Result<HashSet<usize>> {
     }
 }
 
-fn eventually_set(expr: &Expr, graph: &ModelGraph) -> Result<HashSet<usize>> {
-    let mut set = sat_set(expr, graph)?;
+fn eventually_set(expr: &Expr, graph: &ModelGraph, fair: &Fair) -> Result<HashSet<usize>> {
+    let mut set = sat_set(expr, graph, fair)?;
 
     loop {
         let before = set.len();
@@ -218,9 +304,9 @@ fn eventually_set(expr: &Expr, graph: &ModelGraph) -> Result<HashSet<usize>> {
     }
 }
 
-fn until_set(lhs: &Expr, rhs: &Expr, graph: &ModelGraph) -> Result<HashSet<usize>> {
-    let lhs = sat_set(lhs, graph)?;
-    let mut set = sat_set(rhs, graph)?;
+fn until_set(lhs: &Expr, rhs: &Expr, graph: &ModelGraph, fair: &Fair) -> Result<HashSet<usize>> {
+    let lhs = sat_set(lhs, graph, fair)?;
+    let mut set = sat_set(rhs, graph, fair)?;
 
     loop {
         let before = set.len();
@@ -248,13 +334,14 @@ fn counterexample(
     expr: &Expr,
     graph: &ModelGraph,
     sat: &HashSet<usize>,
+    fair: &Fair,
 ) -> Result<Counterexample> {
     match expr {
         Expr::Unary {
             op: UnaryOp::Always,
             expr,
         } => {
-            let inner = sat_set(expr, graph)?;
+            let inner = sat_set(expr, graph, fair)?;
             let target = |state: usize| !inner.contains(&state);
             Ok(path_counterexample(initial, graph, &target))
         }
@@ -262,7 +349,7 @@ fn counterexample(
             op: UnaryOp::Eventually,
             expr,
         } => {
-            let inner = sat_set(expr, graph)?;
+            let inner = sat_set(expr, graph, fair)?;
             Ok(lasso_avoiding(initial, graph, &inner))
         }
         Expr::Binary {
@@ -270,7 +357,7 @@ fn counterexample(
             rhs,
             ..
         } => {
-            let rhs = sat_set(rhs, graph)?;
+            let rhs = sat_set(rhs, graph, fair)?;
             Ok(lasso_avoiding(initial, graph, &rhs))
         }
         _ => {
@@ -292,6 +379,7 @@ fn path_counterexample(
             .map(|state| graph.states[*state].clone())
             .collect(),
         cycle_start: None,
+        transitions: Vec::new(),
     }
 }
 
@@ -308,6 +396,7 @@ fn lasso_avoiding(initial: usize, graph: &ModelGraph, avoid: &HashSet<usize>) ->
                     .map(|state| graph.states[*state].clone())
                     .collect(),
                 cycle_start: Some(cycle_start),
+                transitions: Vec::new(),
             };
         }
 
@@ -325,6 +414,7 @@ fn lasso_avoiding(initial: usize, graph: &ModelGraph, avoid: &HashSet<usize>) ->
                     .map(|state| graph.states[*state].clone())
                     .collect(),
                 cycle_start: None,
+                transitions: Vec::new(),
             };
         };
 
@@ -394,23 +484,606 @@ pub fn counterexample_as_json(
             .map(|state| state_as_json(graph, state))
             .collect::<Vec<_>>(),
         "cycle_start": counterexample.cycle_start,
+        "transitions": counterexample.transitions,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Fairness (fair-CTL): restricts the paths that count for liveness so that a
+// declared transition is not neglected forever. Implemented as a cycle
+// (SCC) acceptance condition — no automaton/product needed.
+// ---------------------------------------------------------------------------
+
+/// Resolved fairness constraints for one model.
+struct Fair<'a> {
+    constraints: Vec<FairConstraint<'a>>,
+}
+
+struct FairConstraint<'a> {
+    strength: FairnessStrength,
+    /// The transition relation `R_t`.
+    relation: &'a Expr,
+    /// States where `R_t` is enabled (has some successor edge).
+    enabled: HashSet<usize>,
+}
+
+impl<'a> Fair<'a> {
+    fn build(file: &'a SourceFile, graph: &ModelGraph) -> Self {
+        let relations: HashMap<&str, &Expr> = file
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Transition(block) => Some((block.name.as_str(), &block.expr)),
+                _ => None,
+            })
+            .collect();
+
+        let mut constraints = Vec::new();
+        for item in &file.items {
+            if let Item::Fairness(decl) = item {
+                for c in &decl.constraints {
+                    if let Some(&relation) = relations.get(c.transition.as_str()) {
+                        constraints.push(FairConstraint {
+                            strength: c.strength,
+                            relation,
+                            enabled: enabled_states(relation, graph),
+                        });
+                    }
+                }
+            }
+        }
+        Fair { constraints }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.constraints.is_empty()
+    }
+}
+
+/// Does the transition relation hold on the edge `from → to`?
+fn relation_holds(relation: &Expr, graph: &ModelGraph, from: usize, to: usize) -> bool {
+    match eval_expr(
+        relation,
+        &graph.env,
+        Some(&graph.states[from]),
+        Some(&graph.states[to]),
+    ) {
+        Ok(value) => expect_bool(value, "transition").unwrap_or(false),
+        Err(_) => false,
+    }
+}
+
+/// States where the transition is enabled (`∃ s'. R_t(s, s')`), computed over
+/// the reachable graph's edges.
+fn enabled_states(relation: &Expr, graph: &ModelGraph) -> HashSet<usize> {
+    (0..graph.states.len())
+        .filter(|&s| {
+            graph.edges[s]
+                .iter()
+                .any(|&s2| relation_holds(relation, graph, s, s2))
+        })
+        .collect()
+}
+
+fn complement(set: &HashSet<usize>, graph: &ModelGraph) -> HashSet<usize> {
+    all_states(graph).difference(set).copied().collect()
+}
+
+/// States that can reach `seeds` in zero or more steps, optionally staying
+/// inside `within` (both edge endpoints in `within`).
+fn reach_backward(
+    graph: &ModelGraph,
+    seeds: &HashSet<usize>,
+    within: Option<&HashSet<usize>>,
+) -> HashSet<usize> {
+    let mut set = seeds.clone();
+    loop {
+        let before = set.len();
+        for s in 0..graph.states.len() {
+            if set.contains(&s) {
+                continue;
+            }
+            if within.is_some_and(|w| !w.contains(&s)) {
+                continue;
+            }
+            if graph.edges[s].iter().any(|&s2| {
+                within.map_or(true, |w| w.contains(&s2)) && set.contains(&s2)
+            }) {
+                set.insert(s);
+            }
+        }
+        if set.len() == before {
+            return set;
+        }
+    }
+}
+
+/// Strongly connected components of the subgraph induced by `subset`
+/// (iterative Tarjan).
+fn sccs_within(graph: &ModelGraph, subset: &HashSet<usize>) -> Vec<Vec<usize>> {
+    let n = graph.states.len();
+    let mut index = vec![usize::MAX; n];
+    let mut low = vec![0usize; n];
+    let mut on_stack = vec![false; n];
+    let mut stack: Vec<usize> = Vec::new();
+    let mut next_index = 0usize;
+    let mut sccs = Vec::new();
+
+    for &start in subset {
+        if index[start] != usize::MAX {
+            continue;
+        }
+        // Explicit DFS stack of (node, next-successor-position).
+        let mut call: Vec<(usize, usize)> = vec![(start, 0)];
+        while let Some(&(v, ei)) = call.last() {
+            if ei == 0 {
+                index[v] = next_index;
+                low[v] = next_index;
+                next_index += 1;
+                stack.push(v);
+                on_stack[v] = true;
+            }
+            let succ = &graph.edges[v];
+            if ei < succ.len() {
+                let w = succ[ei];
+                call.last_mut().unwrap().1 += 1;
+                if !subset.contains(&w) {
+                    continue;
+                }
+                if index[w] == usize::MAX {
+                    call.push((w, 0));
+                } else if on_stack[w] {
+                    low[v] = low[v].min(index[w]);
+                }
+            } else {
+                if low[v] == index[v] {
+                    let mut comp = Vec::new();
+                    loop {
+                        let w = stack.pop().unwrap();
+                        on_stack[w] = false;
+                        comp.push(w);
+                        if w == v {
+                            break;
+                        }
+                    }
+                    sccs.push(comp);
+                }
+                call.pop();
+                if let Some(&(parent, _)) = call.last() {
+                    low[parent] = low[parent].min(low[v]);
+                }
+            }
+        }
+    }
+    sccs
+}
+
+/// Does `comp` (an SCC within `subset`) admit an infinite **fair** path — i.e.
+/// a cycle satisfying every fairness constraint?
+fn scc_is_fair(comp: &[usize], graph: &ModelGraph, fair: &Fair, subset: &HashSet<usize>) -> bool {
+    let members: HashSet<usize> = comp.iter().copied().collect();
+
+    // Must have an internal cycle: nontrivial, or a self-loop.
+    let has_cycle = comp.len() > 1
+        || graph.edges[comp[0]]
+            .iter()
+            .any(|&w| w == comp[0] && subset.contains(&w));
+    if !has_cycle {
+        return false;
+    }
+
+    fair.constraints.iter().all(|c| {
+        let taken = comp.iter().any(|&s| {
+            graph.edges[s]
+                .iter()
+                .any(|&s2| members.contains(&s2) && relation_holds(c.relation, graph, s, s2))
+        });
+        match c.strength {
+            // weak: fair unless enabled at *every* state yet never taken.
+            FairnessStrength::Weak => !comp.iter().all(|s| c.enabled.contains(s)) || taken,
+            // strong: fair unless enabled at *some* state yet never taken.
+            FairnessStrength::Strong => !comp.iter().any(|s| c.enabled.contains(s)) || taken,
+        }
+    })
+}
+
+/// `E_fair G subset` — states with an infinite fair path staying in `subset`.
+fn fair_eg(subset: &HashSet<usize>, graph: &ModelGraph, fair: &Fair) -> HashSet<usize> {
+    let mut seeds = HashSet::new();
+    for comp in sccs_within(graph, subset) {
+        if scc_is_fair(&comp, graph, fair, subset) {
+            seeds.extend(comp);
+        }
+    }
+    reach_backward(graph, &seeds, Some(subset))
+}
+
+/// `A_fair F φ` — on every fair path, φ eventually holds.
+fn fair_eventually(phi: &Expr, graph: &ModelGraph, fair: &Fair) -> Result<HashSet<usize>> {
+    let not_phi = complement(&sat_set(phi, graph, fair)?, graph);
+    Ok(complement(&fair_eg(&not_phi, graph, fair), graph))
+}
+
+/// `A_fair G F φ` (recurrence) — on every fair path, φ holds infinitely often.
+fn fair_recurrence(phi: &Expr, graph: &ModelGraph, fair: &Fair) -> Result<HashSet<usize>> {
+    let not_phi = complement(&sat_set(phi, graph, fair)?, graph);
+    let stuck = fair_eg(&not_phi, graph, fair);
+    Ok(complement(&reach_backward(graph, &stuck, None), graph))
+}
+
+/// `A_fair [φ U ψ]` — on every fair path, ψ eventually holds with φ until then.
+fn fair_until(lhs: &Expr, rhs: &Expr, graph: &ModelGraph, fair: &Fair) -> Result<HashSet<usize>> {
+    let phi = sat_set(lhs, graph, fair)?;
+    let psi = sat_set(rhs, graph, fair)?;
+    let not_psi = complement(&psi, graph);
+    // Violations while ψ has not yet held: φ fails (escape), or a fair ¬ψ cycle.
+    let mut seeds: HashSet<usize> = not_psi.iter().copied().filter(|s| !phi.contains(s)).collect();
+    seeds.extend(fair_eg(&not_psi, graph, fair));
+    let bad = reach_backward(graph, &seeds, Some(&not_psi));
+    Ok(complement(&bad, graph))
+}
+
+/// Build a fair lasso counterexample for a failing liveness property.
+fn fair_counterexample(
+    initial: usize,
+    expr: &Expr,
+    graph: &ModelGraph,
+    fair: &Fair,
+) -> Result<Counterexample> {
+    match expr {
+        // □ ◇ φ: the cycle must avoid φ; the prefix may pass through φ.
+        Expr::Unary {
+            op: UnaryOp::Always,
+            expr: inner,
+        } => {
+            if let Expr::Unary {
+                op: UnaryOp::Eventually,
+                expr: phi,
+            } = inner.as_ref()
+            {
+                let avoid = complement(&sat_set(phi, graph, fair)?, graph);
+                return Ok(fair_lasso(initial, graph, fair, &avoid, None));
+            }
+            // Non-recurrence `□ ψ` is safety: a finite path to a violating state.
+            let inner = sat_set(inner, graph, fair)?;
+            Ok(path_counterexample(initial, graph, &|s| !inner.contains(&s)))
+        }
+        // ◇ φ: a fair path staying in ¬φ forever.
+        Expr::Unary {
+            op: UnaryOp::Eventually,
+            expr: phi,
+        } => {
+            let avoid = complement(&sat_set(phi, graph, fair)?, graph);
+            Ok(fair_lasso(initial, graph, fair, &avoid, Some(&avoid)))
+        }
+        // φ U ψ: reach a ¬φ∧¬ψ escape, or a fair ¬ψ cycle.
+        Expr::Binary {
+            op: BinaryOp::Until,
+            lhs,
+            rhs,
+        } => {
+            let phi = sat_set(lhs, graph, fair)?;
+            let not_psi = complement(&sat_set(rhs, graph, fair)?, graph);
+            let escape = |s: usize| not_psi.contains(&s) && !phi.contains(&s);
+            if let Some(path) = bfs_path(initial, graph, Some(&not_psi), &escape) {
+                return Ok(finite_counterexample(&path, graph));
+            }
+            Ok(fair_lasso(initial, graph, fair, &not_psi, Some(&not_psi)))
+        }
+        // Non-temporal / boolean shapes: fairness does not change the verdict;
+        // the initial state already witnesses the violation.
+        _ => Ok(finite_counterexample(&[initial], graph)),
+    }
+}
+
+/// Build a lasso: a prefix from `initial` (optionally staying in `prefix_within`)
+/// to a fair SCC contained in `cycle_within`, then a cycle covering that SCC's
+/// internal edges so the displayed loop is itself fair.
+fn fair_lasso(
+    initial: usize,
+    graph: &ModelGraph,
+    fair: &Fair,
+    cycle_within: &HashSet<usize>,
+    prefix_within: Option<&HashSet<usize>>,
+) -> Counterexample {
+    // States belonging to some fair SCC within `cycle_within`, and each state's
+    // component members.
+    let mut member_of: HashMap<usize, HashSet<usize>> = HashMap::new();
+    for comp in sccs_within(graph, cycle_within) {
+        if scc_is_fair(&comp, graph, fair, cycle_within) {
+            let members: HashSet<usize> = comp.iter().copied().collect();
+            for &s in &comp {
+                member_of.insert(s, members.clone());
+            }
+        }
+    }
+
+    let Some(prefix) = bfs_path(initial, graph, prefix_within, &|s| member_of.contains_key(&s))
+    else {
+        // No fair cycle reachable (should not happen when the verdict is Fail).
+        return Counterexample {
+            states: vec![graph.states[initial].clone()],
+            cycle_start: None,
+            transitions: Vec::new(),
+        };
+    };
+
+    let anchor = *prefix.last().expect("prefix has at least the initial state");
+    let members = member_of.get(&anchor).cloned().unwrap_or_default();
+    let cycle = covering_cycle(&members, anchor, graph);
+
+    // prefix ends at `anchor`; append the cycle (which starts and ends at
+    // `anchor`) after that shared state.
+    let cycle_start = prefix.len() - 1;
+    let mut ids = prefix;
+    ids.extend(cycle.into_iter().skip(1));
+
+    Counterexample {
+        states: ids.iter().map(|&s| graph.states[s].clone()).collect(),
+        cycle_start: Some(cycle_start),
+        transitions: Vec::new(),
+    }
+}
+
+/// A closed walk from `anchor` back to `anchor` traversing every internal edge
+/// of the SCC `members`, so every fairness-witnessing edge appears in the loop.
+fn covering_cycle(members: &HashSet<usize>, anchor: usize, graph: &ModelGraph) -> Vec<usize> {
+    let internal_edges: Vec<(usize, usize)> = members
+        .iter()
+        .flat_map(|&u| {
+            graph.edges[u]
+                .iter()
+                .filter(|&&v| members.contains(&v))
+                .map(move |&v| (u, v))
+        })
+        .collect();
+
+    let mut walk = vec![anchor];
+    let mut current = anchor;
+    for (u, v) in internal_edges {
+        if current != u {
+            if let Some(path) = bfs_path(current, graph, Some(members), &|s| s == u) {
+                walk.extend(path.into_iter().skip(1));
+            }
+        }
+        walk.push(v);
+        current = v;
+    }
+    if current != anchor {
+        if let Some(path) = bfs_path(current, graph, Some(members), &|s| s == anchor) {
+            walk.extend(path.into_iter().skip(1));
+        }
+    }
+    walk
+}
+
+/// BFS shortest path from `initial` to the first state satisfying `target`,
+/// optionally staying within `within`. Returns the state id sequence.
+fn bfs_path(
+    initial: usize,
+    graph: &ModelGraph,
+    within: Option<&HashSet<usize>>,
+    target: &dyn Fn(usize) -> bool,
+) -> Option<Vec<usize>> {
+    if within.is_some_and(|w| !w.contains(&initial)) {
+        return None;
+    }
+    let mut queue = VecDeque::from([initial]);
+    let mut parent: HashMap<usize, usize> = HashMap::new();
+    let mut visited: HashSet<usize> = HashSet::from([initial]);
+
+    while let Some(state) = queue.pop_front() {
+        if target(state) {
+            let mut path = vec![state];
+            let mut cursor = state;
+            while let Some(&prev) = parent.get(&cursor) {
+                path.push(prev);
+                cursor = prev;
+            }
+            path.reverse();
+            return Some(path);
+        }
+        for &next in &graph.edges[state] {
+            if within.is_some_and(|w| !w.contains(&next)) || visited.contains(&next) {
+                continue;
+            }
+            visited.insert(next);
+            parent.insert(next, state);
+            queue.push_back(next);
+        }
+    }
+    None
+}
+
+fn finite_counterexample(ids: &[usize], graph: &ModelGraph) -> Counterexample {
+    Counterexample {
+        states: ids.iter().map(|&s| graph.states[s].clone()).collect(),
+        cycle_start: None,
+        transitions: Vec::new(),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::model::build_graph;
     use crate::model::Value;
-    use crate::sema::check_source_file;
+    use crate::sema::{check_source_file, elaborate};
     use crate::syntax::parse_source;
 
     use super::*;
 
     fn report(source: &str) -> Result<CheckReport> {
-        let file = parse_source(source)?;
+        let file = elaborate(&parse_source(source)?)?;
         check_source_file(&file)?;
         let graph = build_graph(&file)?;
         check_properties(&file, &graph)
+    }
+
+    #[test]
+    fn unchanged_frame_condition_pins_variable() {
+        // `unchanged(y)` must genuinely hold y fixed across every step.
+        let report = report(
+            r"
+            let x : 0..2
+            let y : 0..2
+            init { x = 0 ∧ y = 0 }
+            transition bump { x' = (x + 1) mod 3 ∧ unchanged(y) }
+            property y_pinned { □ (y = 0) }
+            ",
+        )
+        .expect("check should run");
+        assert_eq!(report.status, CheckStatus::Pass);
+    }
+
+    #[test]
+    fn parameterized_indexed_transition_isolates_other_index() {
+        // Turning on one node preserves the other; both nodes can reach `on`,
+        // but they are never forced on together by a single transition.
+        let report = report(
+            r"
+            type Node = enum { n1, n2 }
+            type Power = enum { off, on }
+            let power[node ∈ Node] ∈ Power
+            init { ∀ node ∈ Node: power[node] = off }
+            transition switch(node ∈ Node) {
+              power[node]' = on ∧ unchanged(power except node)
+              ∨
+              power[node]' = off ∧ unchanged(power except node)
+            }
+            property n1_reaches_on { □ (power[n1] = off) }
+            ",
+        )
+        .expect("check should run");
+        // n1 can turn on, so the always-off invariant fails with a witness.
+        assert_eq!(report.status, CheckStatus::Fail);
+        assert!(report.properties[0].counterexample.is_some());
+    }
+
+    #[test]
+    fn counterexample_labels_the_firing_transition() {
+        let report = report(
+            r"
+            type Node = enum { n1, n2 }
+            type Power = enum { off, on }
+            let power[node ∈ Node] ∈ Power
+            init { ∀ node ∈ Node: power[node] = off }
+            transition switch(node ∈ Node) {
+              power[node]' = on ∧ unchanged(power except node)
+            }
+            property n1_off { □ (power[n1] = off) }
+            ",
+        )
+        .expect("check should run");
+        let cex = report.properties[0]
+            .counterexample
+            .as_ref()
+            .expect("counterexample");
+        // The step reaching s1 is the parameterized instance for n1.
+        assert_eq!(cex.transitions.first(), Some(&None));
+        assert_eq!(cex.transitions.get(1), Some(&Some("switch(n1)".to_string())));
+    }
+
+    #[test]
+    fn weak_fairness_proves_eventuality() {
+        // `spin` can flip x forever while `work` is continuously enabled but
+        // never taken. Weak fairness on `work` rules that path out, so ◇done holds.
+        let source = r"
+            let x : 0..1
+            let done : bool
+            init { x = 0 ∧ done = false }
+            transition work { done = false ∧ done' = true ∧ x' = x }
+            transition spin { done' = done ∧ x' = 1 - x }
+            property finishes { ◇ done }
+        ";
+        let unfair = report(source).expect("check");
+        assert_eq!(unfair.status, CheckStatus::Fail, "without fairness ◇done must fail");
+
+        let fair = report(&format!("{source}\nfairness {{ weak work }}")).expect("check");
+        assert_eq!(fair.status, CheckStatus::Pass, "weak fairness must prove ◇done");
+    }
+
+    #[test]
+    fn fair_recurrence_holds_under_fairness() {
+        // □◇done: done holds infinitely often. Fails when `spin` can starve
+        // `work`; holds once weak fairness forces `work`.
+        let source = r"
+            let x : 0..1
+            let done : bool
+            init { x = 0 ∧ done = false }
+            transition work { done = false ∧ done' = true ∧ x' = x }
+            transition spin { done' = done ∧ x' = 1 - x }
+            property recurs { □ ◇ done }
+        ";
+        assert_eq!(report(source).expect("check").status, CheckStatus::Fail);
+        assert_eq!(
+            report(&format!("{source}\nfairness {{ weak work }}"))
+                .expect("check")
+                .status,
+            CheckStatus::Pass
+        );
+    }
+
+    #[test]
+    fn strong_fairness_needed_for_intermittent_transition() {
+        // `finish` is enabled only when x = 0, i.e. intermittently as `tick`
+        // oscillates x. Weak fairness cannot force it (not continuously enabled);
+        // strong fairness can (enabled infinitely often).
+        let source = r"
+            let x : 0..1
+            let done : bool
+            init { x = 0 ∧ done = false }
+            transition tick { x' = 1 - x ∧ done' = done }
+            transition finish { x = 0 ∧ done' = true ∧ x' = x }
+            property finishes { ◇ done }
+        ";
+        assert_eq!(
+            report(&format!("{source}\nfairness {{ weak finish }}"))
+                .expect("check")
+                .status,
+            CheckStatus::Fail,
+            "weak fairness is insufficient for an intermittently-enabled transition"
+        );
+        assert_eq!(
+            report(&format!("{source}\nfairness {{ strong finish }}"))
+                .expect("check")
+                .status,
+            CheckStatus::Pass,
+            "strong fairness must force an infinitely-often-enabled transition"
+        );
+    }
+
+    #[test]
+    fn fair_counterexample_is_a_labeled_lasso() {
+        // `weak finish` is insufficient, so ◇done fails and the witness is a
+        // fair lasso: a prefix into a cycle that spins without finishing.
+        let report = report(
+            r"
+            let x : 0..1
+            let done : bool
+            init { x = 0 ∧ done = false }
+            transition tick { x' = 1 - x ∧ done' = done }
+            transition finish { x = 0 ∧ done' = true ∧ x' = x }
+            property finishes { ◇ done }
+            fairness { weak finish }
+            ",
+        )
+        .expect("check");
+        assert_eq!(report.status, CheckStatus::Fail);
+        let cex = report.properties[0]
+            .counterexample
+            .as_ref()
+            .expect("counterexample");
+        assert!(cex.cycle_start.is_some(), "liveness counterexample must be a lasso");
+        // The cycle spins via `tick`; every reached state carries a label.
+        assert!(
+            cex.transitions.iter().skip(1).all(Option::is_some),
+            "each step should name its transition: {:?}",
+            cex.transitions
+        );
+        assert!(cex.states.iter().all(|s| matches!(
+            s.values.get(1),
+            Some(crate::model::Value::Bool(false))
+        )));
     }
 
     #[test]

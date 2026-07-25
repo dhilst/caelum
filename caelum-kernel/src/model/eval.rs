@@ -46,6 +46,13 @@ pub fn eval_expr(
             let rhs = eval_expr(rhs, env, current, next)?;
             eval_binary(*op, lhs, rhs)
         }
+        Expr::Indexed { .. } | Expr::Unchanged(_) | Expr::Quantifier { .. } => {
+            Err(CaelumError::Model {
+                message: "internal error: sugar expression reached evaluation without \
+                          elaboration (indexed reference, `unchanged`, or quantifier)"
+                    .into(),
+            })
+        }
     }
 }
 

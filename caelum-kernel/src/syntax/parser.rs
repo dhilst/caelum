@@ -44,6 +44,7 @@ fn parse_file(path: &Path, pair: Pair<'_, Rule>) -> Result<SourceFile> {
             }
             Rule::property_block => items.push(Item::Property(parse_property_block(child)?)),
             Rule::invalid_block => items.push(Item::Property(parse_invalid_block(child)?)),
+            Rule::fairness_block => items.push(Item::Fairness(parse_fairness_block(child))),
             Rule::EOI => {}
             rule => {
                 return Err(CaelumError::Parse {
@@ -116,9 +117,34 @@ fn parse_var_decl(pair: Pair<'_, Rule>) -> Result<VarDecl> {
         .expect("var_decl must contain ident")
         .as_str()
         .to_owned();
-    let domain = parse_domain(inner.next().expect("var_decl must contain domain"))?;
+    let mut next = inner.next().expect("var_decl must contain domain");
+    let index = if next.as_rule() == Rule::var_index {
+        let param = parse_param(next)?;
+        next = inner.next().expect("var_decl must contain domain");
+        Some(param)
+    } else {
+        None
+    };
+    let domain = parse_domain(next)?;
 
-    Ok(VarDecl { name, domain })
+    Ok(VarDecl {
+        name,
+        index,
+        domain,
+    })
+}
+
+/// Parse a `transition_param` or `var_index` pair, both of which contain an
+/// `ident` followed by a `domain` (the `type_sep` is silent).
+fn parse_param(pair: Pair<'_, Rule>) -> Result<TransitionParam> {
+    let mut inner = pair.into_inner();
+    let name = inner
+        .next()
+        .expect("parameter must contain ident")
+        .as_str()
+        .to_owned();
+    let domain = parse_domain(inner.next().expect("parameter must contain domain"))?;
+    Ok(TransitionParam { name, domain })
 }
 
 fn parse_init_block(pair: Pair<'_, Rule>) -> Result<InitBlock> {
@@ -133,9 +159,20 @@ fn parse_transition_block(pair: Pair<'_, Rule>) -> Result<TransitionBlock> {
         .expect("transition must contain name")
         .as_str()
         .to_owned();
-    let expr = parse_block_expr(inner.next().expect("transition must contain block"))?;
+    let mut next = inner.next().expect("transition must contain block");
+    let params = if next.as_rule() == Rule::transition_params {
+        let params = next
+            .into_inner()
+            .map(parse_param)
+            .collect::<Result<Vec<_>>>()?;
+        next = inner.next().expect("transition must contain block");
+        params
+    } else {
+        Vec::new()
+    };
+    let expr = parse_block_expr(next)?;
 
-    Ok(TransitionBlock { name, expr })
+    Ok(TransitionBlock { name, params, expr })
 }
 
 fn parse_property_block(pair: Pair<'_, Rule>) -> Result<PropertyBlock> {
@@ -168,6 +205,55 @@ fn parse_invalid_block(pair: Pair<'_, Rule>) -> Result<PropertyBlock> {
         name,
         expr,
     })
+}
+
+fn parse_unchanged_arg(pair: Pair<'_, Rule>) -> Result<UnchangedTarget> {
+    let mut inner = pair.into_inner();
+    let name = inner
+        .next()
+        .expect("unchanged arg must contain ident")
+        .as_str()
+        .to_owned();
+    let except = inner.next().map(|p| p.as_str().to_owned());
+    Ok(UnchangedTarget { name, except })
+}
+
+fn parse_quant_op(pair: Pair<'_, Rule>) -> QuantKind {
+    let inner = pair
+        .into_inner()
+        .next()
+        .expect("quant_op must contain forall/exists");
+    match inner.as_rule() {
+        Rule::forall_op => QuantKind::Forall,
+        _ => QuantKind::Exists,
+    }
+}
+
+fn parse_fairness_block(pair: Pair<'_, Rule>) -> FairnessDecl {
+    let constraints = pair
+        .into_inner()
+        .map(|entry| {
+            let mut inner = entry.into_inner();
+            let strength = match inner
+                .next()
+                .expect("fairness entry must contain strength")
+                .as_str()
+            {
+                "strong" => FairnessStrength::Strong,
+                _ => FairnessStrength::Weak,
+            };
+            let transition = inner
+                .next()
+                .expect("fairness entry must contain transition name")
+                .as_str()
+                .to_owned();
+            FairnessConstraint {
+                strength,
+                transition,
+            }
+        })
+        .collect();
+    FairnessDecl { constraints }
 }
 
 fn parse_block_expr(pair: Pair<'_, Rule>) -> Result<Expr> {
@@ -241,6 +327,48 @@ fn parse_expr_pair(pair: Pair<'_, Rule>) -> Result<Expr> {
                 .as_str()
                 .to_owned();
             Ok(Expr::PrimedName(name))
+        }
+        Rule::indexed_ident => {
+            let mut inner = pair.into_inner();
+            let name = inner
+                .next()
+                .expect("indexed ident must contain ident")
+                .as_str()
+                .to_owned();
+            let index = parse_expr_pair(inner.next().expect("indexed ident must contain index"))?;
+            let primed = inner
+                .next()
+                .map(|marker| marker.as_rule() == Rule::prime_marker)
+                .unwrap_or(false);
+            Ok(Expr::Indexed {
+                name,
+                index: Box::new(index),
+                primed,
+            })
+        }
+        Rule::unchanged_expr => {
+            let targets = pair
+                .into_inner()
+                .map(parse_unchanged_arg)
+                .collect::<Result<Vec<_>>>()?;
+            Ok(Expr::Unchanged(targets))
+        }
+        Rule::quantifier => {
+            let mut inner = pair.into_inner();
+            let kind = parse_quant_op(inner.next().expect("quantifier must contain quant_op"));
+            let var = inner
+                .next()
+                .expect("quantifier must contain bound variable")
+                .as_str()
+                .to_owned();
+            let domain = parse_domain(inner.next().expect("quantifier must contain domain"))?;
+            let body = parse_expr_pair(inner.next().expect("quantifier must contain body"))?;
+            Ok(Expr::Quantifier {
+                kind,
+                var,
+                domain,
+                body: Box::new(body),
+            })
         }
         rule => Err(CaelumError::Parse {
             path: "<memory>".to_string(),
@@ -636,5 +764,124 @@ mod tests {
         };
         assert_eq!(decl.name, "x");
         assert_eq!(decl.domain, Domain::Named("Color".into()));
+    }
+
+    #[test]
+    fn parses_unchanged_expression() {
+        let file = parse_source("let x : bool\nlet y : bool\ntransition t { unchanged(x, y) }")
+            .expect("unchanged should parse");
+        let Item::Transition(ref block) = file.items[2] else {
+            panic!("expected Transition, got {:?}", file.items[2]);
+        };
+        assert_eq!(
+            block.expr,
+            Expr::Unchanged(vec![
+                UnchangedTarget { name: "x".into(), except: None },
+                UnchangedTarget { name: "y".into(), except: None },
+            ])
+        );
+    }
+
+    #[test]
+    fn parses_unchanged_except() {
+        let file = parse_source("transition t { unchanged(status except node) }")
+            .expect("unchanged except should parse");
+        let Item::Transition(ref block) = file.items[0] else {
+            panic!("expected Transition");
+        };
+        assert_eq!(
+            block.expr,
+            Expr::Unchanged(vec![UnchangedTarget {
+                name: "status".into(),
+                except: Some("node".into()),
+            }])
+        );
+    }
+
+    #[test]
+    fn parses_transition_parameters() {
+        let file = parse_source(
+            "type Node = enum { n1, n2 }\ntransition t(node ∈ Node, k : 0..2) { node = node }",
+        )
+        .expect("parameters should parse");
+        let Item::Transition(ref block) = file.items[1] else {
+            panic!("expected Transition");
+        };
+        assert_eq!(block.params.len(), 2);
+        assert_eq!(block.params[0].name, "node");
+        assert_eq!(block.params[0].domain, Domain::Named("Node".into()));
+        assert_eq!(block.params[1].name, "k");
+    }
+
+    #[test]
+    fn parses_indexed_var_and_primed_reference() {
+        let file = parse_source(
+            "type Node = enum { n1, n2 }\nlet s[node ∈ Node] : bool\ntransition t { s[node]' = s[node] }",
+        )
+        .expect("indexed state should parse");
+        let Item::Var(ref decl) = file.items[1] else {
+            panic!("expected Var");
+        };
+        assert_eq!(decl.name, "s");
+        assert_eq!(decl.index.as_ref().map(|p| p.name.as_str()), Some("node"));
+
+        let Item::Transition(ref block) = file.items[2] else {
+            panic!("expected Transition");
+        };
+        let Expr::Binary { lhs, rhs, .. } = &block.expr else {
+            panic!("expected binary, got {:?}", block.expr);
+        };
+        assert_eq!(
+            **lhs,
+            Expr::Indexed { name: "s".into(), index: Box::new(Expr::Name("node".into())), primed: true }
+        );
+        assert_eq!(
+            **rhs,
+            Expr::Indexed { name: "s".into(), index: Box::new(Expr::Name("node".into())), primed: false }
+        );
+    }
+
+    #[test]
+    fn parses_quantifier() {
+        let file = parse_source("type Node = enum { n1, n2 }\nproperty p { ∀ node ∈ Node: node = n1 }")
+            .expect("quantifier should parse");
+        let Item::Property(ref block) = file.items[1] else {
+            panic!("expected Property");
+        };
+        let Expr::Quantifier { kind, var, domain, .. } = &block.expr else {
+            panic!("expected quantifier, got {:?}", block.expr);
+        };
+        assert_eq!(*kind, QuantKind::Forall);
+        assert_eq!(var, "node");
+        assert_eq!(*domain, Domain::Named("Node".into()));
+    }
+
+    #[test]
+    fn empty_unchanged_is_a_parse_error() {
+        assert!(parse_source("transition t { unchanged() }").is_err());
+    }
+
+    #[test]
+    fn parses_fairness_block() {
+        let file = parse_source(
+            "transition a { true }\ntransition b { true }\nfairness {\n  weak a\n  strong b\n}",
+        )
+        .expect("fairness block should parse");
+        let Item::Fairness(ref decl) = file.items[2] else {
+            panic!("expected Fairness, got {:?}", file.items[2]);
+        };
+        assert_eq!(
+            decl.constraints,
+            vec![
+                FairnessConstraint {
+                    strength: FairnessStrength::Weak,
+                    transition: "a".into(),
+                },
+                FairnessConstraint {
+                    strength: FairnessStrength::Strong,
+                    transition: "b".into(),
+                },
+            ]
+        );
     }
 }

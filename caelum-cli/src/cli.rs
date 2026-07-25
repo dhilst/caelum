@@ -9,7 +9,7 @@ use caelum_kernel::checker::{check_properties, CheckReport, CheckStatus};
 use caelum_kernel::diagnostics::{CaelumError, Result};
 use caelum_kernel::loader::{load_spec_with, LoadedSpec};
 use caelum_kernel::model::{build_graph_with_options, BuildOptions, ModelGraph};
-use caelum_kernel::sema::check_source_file;
+use caelum_kernel::sema::{check_source_file, elaborate};
 use caelum_kernel::syntax::{parse_source_file, PrintMode, Printer, PropertyKind, SourceFile};
 
 use crate::fs_resolver::StdFsResolver;
@@ -214,7 +214,10 @@ fn check(
     dump_graph: bool,
 ) -> Result<bool> {
     let root = StdFsResolver::canonical_id(path)?;
-    let spec = load_spec_with(&root, resolver)?;
+    let mut spec = load_spec_with(&root, resolver)?;
+    // Elaborate the surface AST (unchanged, parameterized transitions, indexed
+    // state, quantifiers) into the plain core AST before checking or building.
+    spec.source = elaborate(&spec.source)?;
     check_source_file(&spec.source)?;
 
     match engine.engine {
@@ -409,6 +412,11 @@ fn print_human_report(
             if let Some(counterexample) = &property.counterexample {
                 println!("counterexample:");
                 for (index, state) in counterexample.states.iter().enumerate() {
+                    if index > 0 {
+                        if let Some(Some(label)) = counterexample.transitions.get(index) {
+                            println!("       --({label})-->");
+                        }
+                    }
                     println!("  s{index}: {}", format_state_named(&var_names, state));
                 }
                 if let Some(cycle_start) = counterexample.cycle_start {
@@ -536,6 +544,12 @@ fn counterexample_to_json_named(
     object.insert("states".into(), serde_json::Value::Array(states));
     if let Some(cycle_start) = counterexample.cycle_start {
         object.insert("cycle_start".into(), serde_json::json!(cycle_start));
+    }
+    if !counterexample.transitions.is_empty() {
+        object.insert(
+            "transitions".into(),
+            serde_json::json!(counterexample.transitions),
+        );
     }
     serde_json::Value::Object(object)
 }

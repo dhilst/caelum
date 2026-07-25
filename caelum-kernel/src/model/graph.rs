@@ -381,13 +381,13 @@ fn transition_matches(
 
 #[cfg(test)]
 mod tests {
-    use crate::sema::check_source_file;
+    use crate::sema::{check_source_file, elaborate};
     use crate::syntax::parse_source;
 
     use super::*;
 
     fn graph(source: &str) -> Result<ModelGraph> {
-        let file = parse_source(source)?;
+        let file = elaborate(&parse_source(source)?)?;
         check_source_file(&file)?;
         build_graph(&file)
     }

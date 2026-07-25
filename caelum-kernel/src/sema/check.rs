@@ -106,6 +106,23 @@ impl Checker {
                     self.record_declaration(&block.name);
                     self.expect_bool(&block.expr, Placement::Property, "property block")?;
                 }
+                // Validated after the loop, once all transition names are known.
+                Item::Fairness(_) => {}
+            }
+        }
+
+        // Fairness constraints may reference transitions declared later in the
+        // file, so validate them once every transition name is recorded.
+        for item in &file.items {
+            if let Item::Fairness(decl) = item {
+                for constraint in &decl.constraints {
+                    if !self.transitions.contains_key(&constraint.transition) {
+                        return semantic_error(format!(
+                            "unknown transition in fairness declaration `{}`",
+                            constraint.transition
+                        ));
+                    }
+                }
             }
         }
 
@@ -258,6 +275,10 @@ impl Checker {
             }
             Expr::Unary { op, expr } => self.unary_type(*op, expr, placement),
             Expr::Binary { op, lhs, rhs } => self.binary_type(*op, lhs, rhs, placement),
+            Expr::Indexed { .. } | Expr::Unchanged(_) | Expr::Quantifier { .. } => semantic_error(
+                "internal error: sugar expression reached type checking without elaboration \
+                 (indexed reference, `unchanged`, or quantifier)",
+            ),
         }
     }
 

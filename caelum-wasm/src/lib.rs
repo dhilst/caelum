@@ -28,7 +28,7 @@ use caelum_kernel::checker::{check_properties, CheckReport, CheckStatus};
 use caelum_kernel::diagnostics::{CaelumError, Result};
 use caelum_kernel::loader::{load_spec_with, LoadedSpec, ModuleId, ModuleResolver};
 use caelum_kernel::model::{build_graph_with_options, BuildOptions};
-use caelum_kernel::sema::check_source_file;
+use caelum_kernel::sema::{check_source_file, elaborate};
 use caelum_kernel::syntax::{parse_source, Item, SourceFile};
 
 // ---------------------------------------------------------------------------
@@ -98,7 +98,8 @@ fn run_inner(
     let resolver = MemResolver {
         files: files.clone(),
     };
-    let spec = load_spec_with(root, &resolver)?;
+    let mut spec = load_spec_with(root, &resolver)?;
+    spec.source = elaborate(&spec.source)?;
     check_source_file(&spec.source)?;
 
     let engine = opts.get("engine").and_then(|v| v.as_str()).unwrap_or("explicit");
@@ -174,7 +175,8 @@ async fn check_spec_z3_inner(
     let opts = parse_opts(opts_json)?;
     let depth = opts.get("bmc_depth").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
 
-    let file = parse_source(source).map_err(|e| e.to_string())?;
+    let parsed = parse_source(source).map_err(|e| e.to_string())?;
+    let file = elaborate(&parsed).map_err(|e| e.to_string())?;
     check_source_file(&file).map_err(|e| e.to_string())?;
     let spec = prepare_bmc(&file).map_err(|e| e.to_string())?;
     let options = BmcOptions {
@@ -291,6 +293,12 @@ fn report_json_parts(source: &SourceFile, files: usize, report: &CheckReport) ->
                 ce.insert("states".into(), serde_json::Value::Array(states));
                 if let Some(cycle_start) = counterexample.cycle_start {
                     ce.insert("cycle_start".into(), serde_json::json!(cycle_start));
+                }
+                if !counterexample.transitions.is_empty() {
+                    ce.insert(
+                        "transitions".into(),
+                        serde_json::json!(counterexample.transitions),
+                    );
                 }
                 object.insert("counterexample".into(), serde_json::Value::Object(ce));
             }

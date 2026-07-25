@@ -276,6 +276,13 @@ impl<'a> Encoder<'a> {
                 let r = self.encode(rhs, time)?;
                 self.encode_binary(*op, l, r)
             }
+            Expr::Indexed { .. } | Expr::Unchanged(_) | Expr::Quantifier { .. } => {
+                Err(CaelumError::Model {
+                    message: "internal error: sugar expression reached BMC encoding without \
+                              elaboration (indexed reference, `unchanged`, or quantifier)"
+                        .into(),
+                })
+            }
         }
     }
 

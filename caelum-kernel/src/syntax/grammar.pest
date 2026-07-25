@@ -11,13 +11,14 @@ module_name = { ident ~ ("." ~ ident)* }
 
 import_decl = { "import" ~ string_lit }
 
-item = _{ type_decl | const_decl | var_decl | init_block | transition_block | property_block | invalid_block }
+item = _{ type_decl | const_decl | var_decl | init_block | transition_block | property_block | invalid_block | fairness_block }
 
 type_decl = { "type" ~ ident ~ "=" ~ type_body }
 type_body = _{ bool_domain | int_range | enum_domain }
 
 const_decl = { "const" ~ ident ~ "=" ~ expr }
-var_decl = { "let" ~ ident ~ type_sep ~ domain }
+var_decl = { "let" ~ ident ~ var_index? ~ type_sep ~ domain }
+var_index = { "[" ~ ident ~ type_sep ~ domain ~ "]" }
 type_sep = _{ ":" | "∈" }
 
 domain = _{ bool_domain | int_range | enum_domain | named_domain }
@@ -28,9 +29,14 @@ range_bound = _{ int_lit | ident }
 enum_domain = { "enum" ~ "{" ~ ident ~ ("," ~ ident)* ~ ","? ~ "}" }
 
 init_block = { "init" ~ block_expr }
-transition_block = { "transition" ~ ident ~ block_expr }
+transition_block = { "transition" ~ ident ~ transition_params? ~ block_expr }
+transition_params = { "(" ~ transition_param ~ ("," ~ transition_param)* ~ ","? ~ ")" }
+transition_param = { ident ~ type_sep ~ domain }
 property_block = { "property" ~ ident ~ block_expr }
 invalid_block = { "invalid" ~ ident ~ block_expr }
+fairness_block = { "fairness" ~ "{" ~ fairness_entry* ~ "}" }
+fairness_entry = { fair_strength ~ ident }
+fair_strength = { "weak" | "strong" }
 block_expr = { "{" ~ expr ~ "}" }
 
 expr = _{ equivalence }
@@ -43,7 +49,18 @@ comparison = { additive ~ (comp_op ~ additive)? }
 additive = { multiplicative ~ (add_op ~ multiplicative)* }
 multiplicative = { unary ~ (mul_op ~ unary)* }
 unary = { unary_op* ~ primary }
-primary = { literal | primed_ident | ident | "(" ~ expr ~ ")" }
+primary = { literal | quantifier | unchanged_expr | indexed_ident | primed_ident | ident | "(" ~ expr ~ ")" }
+
+quantifier = { quant_op ~ ident ~ type_sep ~ domain ~ ":" ~ expr }
+quant_op = { forall_op | exists_op }
+forall_op = { "forall" | "∀" }
+exists_op = { "exists" | "∃" }
+
+unchanged_expr = { "unchanged" ~ "(" ~ unchanged_arg ~ ("," ~ unchanged_arg)* ~ ","? ~ ")" }
+unchanged_arg = { ident ~ ("except" ~ ident)? }
+
+indexed_ident = { ident ~ "[" ~ expr ~ "]" ~ prime_marker? }
+prime_marker = { "'" }
 
 unary_op = { not_op | neg_op | always_op | eventually_op | next_op }
 not_op = { "not" | "~" | "¬" }

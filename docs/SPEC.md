@@ -769,24 +769,49 @@ Later versions may add explicit `action` and `constraint` declarations.
 
 ### 12.6 Unchanged Variables
 
-The first release requires every transition relation to determine or constrain all
-next-state variables explicitly enough for state generation.
-
-Recommended shorthand for future support:
-
-```tpl
-unchanged x
-unchanged { x, y, z }
-```
-
-This shorthand is not required in the first release unless implemented deliberately.
-Without it, users write:
+A next-state variable that a transition does not constrain is left free (it may
+take any value in its domain). To keep a variable fixed, constrain its next-state
+value explicitly. The `unchanged` shorthand expands to a conjunction of `v' = v`
+frame conditions:
 
 ```tpl
-x' = x
+unchanged(x)              // ≡ x' = x
+unchanged(x, y, z)        // ≡ x' = x ∧ y' = y ∧ z' = z
 ```
 
-### 12.7 Property Blocks
+Arguments must be declared state variables; duplicates are deduplicated. For an
+indexed variable (§12.8) `unchanged(status)` preserves every index, and
+`unchanged(status except node)` preserves every index other than `node`.
+
+### 12.7 Parameterized Transitions, Indexed State, and Quantifiers
+
+These surface features are eliminated by a compile-time elaboration pass before
+model checking, so the solver backends only ever see plain scalar variables and
+ordinary transition relations.
+
+**Parameterized transitions** range over finite domains and expand into one
+concrete transition per tuple of the Cartesian product; parameters are immutable
+and each instance is named after its arguments (used in counterexample traces):
+
+```tpl
+transition assign(node ∈ Node, image ∈ Image) { ... }   // → assign(n1, compute), ...
+```
+
+**Indexed state** declares one entry per index and flattens to scalar variables
+`status[n1]`, `status[n2]`, …:
+
+```tpl
+let status[node ∈ Node] ∈ Power
+```
+
+**Quantifiers** `∀`/`∃` (or `forall`/`exists`) over finite domains expand to a
+conjunction / disjunction:
+
+```tpl
+∀ node ∈ Node: status[node] = off
+```
+
+### 12.8 Property Blocks
 
 ```tpl
 property name {
@@ -799,6 +824,29 @@ Property names must be unique.
 Properties are checked independently. A failed property should not prevent checking
 later properties unless the checker cannot continue due to resource limits or an
 internal error.
+
+### 12.9 Fairness
+
+A `fairness` block declares scheduling assumptions used when checking liveness
+properties (`◇`, `□◇`, `until`). Each entry names a transition and a strength:
+
+```tpl
+fairness {
+  weak   node_powers_on
+  strong assign_image
+}
+```
+
+- **weak** (justice): a transition that is continuously enabled is eventually taken.
+- **strong** (compassion): a transition that is enabled infinitely often is eventually taken.
+
+A named transition applies the constraint to every instance a parameterized
+transition expands into. Fairness restricts only the infinite paths considered
+for liveness and never affects safety (`□`) properties. Semantically it is a
+cycle-acceptance condition: a liveness counterexample is admitted only if its
+loop is fair. The explicit engine proves fair liveness; the BMC engine refutes
+it (finds fair counterexamples up to the search depth, approximating "enabled"
+by each transition's state guard).
 
 ## 13. Suggested Formal Grammar
 

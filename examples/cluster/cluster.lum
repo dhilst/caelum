@@ -1,0 +1,100 @@
+module examples.cluster
+
+// Cluster provisioning model.
+//
+// Demonstrates all four multi-entity features together:
+//   * indexed state          — `let status[node ∈ Node] ∈ ProvisionStatus`
+//   * parameterized transitions — `transition assign_image(node ∈ Node, ...)`
+//   * frame-condition sugar  — `unchanged(...)` and `unchanged(v except node)`
+//   * finite quantification  — `∀ node ∈ Node: ...` in `init` and properties
+//
+// Each node moves defined → image_assigned → powering_on → provisioned.
+// A node is only ever provisioned with an image assigned and its power on.
+
+type Node = enum { n1, n2 }
+type Image = enum { no_image, compute, storage }
+type Power = enum { off, on }
+type ProvisionStatus = enum { defined, image_assigned, powering_on, provisioned }
+
+let assigned_image[node ∈ Node] ∈ Image
+let requested_power[node ∈ Node] ∈ Power
+let actual_power[node ∈ Node] ∈ Power
+let status[node ∈ Node] ∈ ProvisionStatus
+
+init {
+  ∀ node ∈ Node:
+    assigned_image[node] = no_image ∧
+    requested_power[node] = off ∧
+    actual_power[node] = off ∧
+    status[node] = defined
+}
+
+// Assign a (real) image to a defined node.
+transition assign_image(node ∈ Node, image ∈ Image) {
+  image ≠ no_image ∧
+  status[node] = defined ∧
+
+  assigned_image[node]' = image ∧
+  status[node]' = image_assigned ∧
+
+  unchanged(
+    assigned_image except node,
+    status except node,
+    requested_power,
+    actual_power
+  )
+}
+
+// Request power for an imaged node.
+transition request_power_on(node ∈ Node) {
+  status[node] = image_assigned ∧
+  assigned_image[node] ≠ no_image ∧
+
+  requested_power[node]' = on ∧
+  status[node]' = powering_on ∧
+
+  unchanged(
+    requested_power except node,
+    status except node,
+    assigned_image,
+    actual_power
+  )
+}
+
+// The node physically powers on and finishes provisioning.
+transition node_powers_on(node ∈ Node) {
+  status[node] = powering_on ∧
+  requested_power[node] = on ∧
+
+  actual_power[node]' = on ∧
+  status[node]' = provisioned ∧
+
+  unchanged(
+    actual_power except node,
+    status except node,
+    requested_power,
+    assigned_image
+  )
+}
+
+// Stutter: keeps every state live so a fully-provisioned cluster does not
+// deadlock. Preserves all indexed variables across every index.
+transition idle {
+  unchanged(assigned_image, requested_power, actual_power, status)
+}
+
+// Safety: a provisioned node always has a real image assigned.
+property provisioned_nodes_have_images {
+  □ (
+    ∀ node ∈ Node:
+      status[node] = provisioned → assigned_image[node] ≠ no_image
+  )
+}
+
+// Safety: a provisioned node is always physically powered on.
+property provisioned_nodes_are_powered {
+  □ (
+    ∀ node ∈ Node:
+      status[node] = provisioned → actual_power[node] = on
+  )
+}

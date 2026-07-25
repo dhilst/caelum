@@ -75,6 +75,15 @@ impl Printer {
             Item::Var(decl) => {
                 out.push_str("let ");
                 out.push_str(&decl.name);
+                if let Some(index) = &decl.index {
+                    out.push('[');
+                    out.push_str(&index.name);
+                    out.push(' ');
+                    out.push_str(self.type_separator());
+                    out.push(' ');
+                    out.push_str(&print_domain(&index.domain));
+                    out.push(']');
+                }
                 out.push(' ');
                 out.push_str(self.type_separator());
                 out.push(' ');
@@ -89,6 +98,24 @@ impl Printer {
             Item::Transition(block) => {
                 out.push_str("transition ");
                 out.push_str(&block.name);
+                if !block.params.is_empty() {
+                    let params = block
+                        .params
+                        .iter()
+                        .map(|param| {
+                            format!(
+                                "{} {} {}",
+                                param.name,
+                                self.type_separator(),
+                                print_domain(&param.domain)
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    out.push('(');
+                    out.push_str(&params);
+                    out.push(')');
+                }
                 out.push_str(" {\n  ");
                 out.push_str(&self.print_expr(&block.expr));
                 out.push_str("\n}\n");
@@ -105,6 +132,21 @@ impl Printer {
                 out.push_str(&self.print_expr(&block.expr));
                 out.push_str("\n}\n");
             }
+            Item::Fairness(decl) => {
+                out.push_str("fairness {\n");
+                for constraint in &decl.constraints {
+                    let strength = match constraint.strength {
+                        FairnessStrength::Weak => "weak",
+                        FairnessStrength::Strong => "strong",
+                    };
+                    out.push_str("  ");
+                    out.push_str(strength);
+                    out.push(' ');
+                    out.push_str(&constraint.transition);
+                    out.push('\n');
+                }
+                out.push_str("}\n");
+            }
         }
     }
 
@@ -115,6 +157,40 @@ impl Printer {
             Expr::Int(value) => value.to_string(),
             Expr::Name(name) => name.clone(),
             Expr::PrimedName(name) => format!("{name}'"),
+            Expr::Indexed {
+                name,
+                index,
+                primed,
+            } => {
+                let index = self.print_expr(index);
+                let prime = if *primed { "'" } else { "" };
+                format!("{name}[{index}]{prime}")
+            }
+            Expr::Unchanged(targets) => {
+                let args = targets
+                    .iter()
+                    .map(|target| match &target.except {
+                        Some(idx) => format!("{} except {idx}", target.name),
+                        None => target.name.clone(),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("unchanged({args})")
+            }
+            Expr::Quantifier {
+                kind,
+                var,
+                domain,
+                body,
+            } => {
+                let body = self.print_expr_at(body, own_prec, Side::Right);
+                format!(
+                    "{} {var} {} {}: {body}",
+                    self.quant_op(*kind),
+                    self.type_separator(),
+                    print_domain(domain)
+                )
+            }
             Expr::Unary { op, expr } => {
                 let child = self.print_expr_at(expr, own_prec, Side::Right);
                 format!("{} {child}", self.unary_op(*op))
@@ -189,6 +265,15 @@ impl Printer {
             PrintMode::UnicodeOperators => "∈",
         }
     }
+
+    fn quant_op(&self, kind: QuantKind) -> &'static str {
+        match (self.mode, kind) {
+            (PrintMode::UnicodeOperators, QuantKind::Forall) => "∀",
+            (_, QuantKind::Forall) => "forall",
+            (PrintMode::UnicodeOperators, QuantKind::Exists) => "∃",
+            (_, QuantKind::Exists) => "exists",
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -215,6 +300,7 @@ fn precedence(expr: &Expr) -> u8 {
             BinaryOp::Add | BinaryOp::Sub => 7,
             BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod => 8,
         },
+        Expr::Quantifier { .. } => 0,
         Expr::Unary { .. } => 9,
         _ => 10,
     }
@@ -396,6 +482,27 @@ mod tests {
             print("property p { x ≥ 1 }", PrintMode::AsciiOperators),
             "property p {\n  x >= 1\n}\n"
         );
+    }
+
+    #[test]
+    fn round_trips_surface_features() {
+        // Parse a spec using every new construct, print it, reparse, and confirm
+        // the AST is identical — the formatter preserves the surface syntax.
+        let source = r"
+            type Node = enum { n1, n2 }
+            type Power = enum { off, on }
+            let power[node ∈ Node] ∈ Power
+            init { ∀ node ∈ Node: power[node] = off }
+            transition switch(node ∈ Node) {
+              power[node]' = on ∧ unchanged(power except node)
+            }
+            property some_on { □ (∃ node ∈ Node: power[node] = on) }
+            fairness { weak switch }
+        ";
+        let first = parse_source(source).expect("parse");
+        let printed = Printer::new(PrintMode::UnicodeOperators).print_source_file(&first);
+        let second = parse_source(&printed).expect("reparse printed output");
+        assert_eq!(first, second, "printed:\n{printed}");
     }
 
     #[test]

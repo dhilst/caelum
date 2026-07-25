@@ -17,12 +17,14 @@
 //! literal per timestep, exactly one of which is true; that literal's
 //! index identifies the loop start.
 
+use crate::checker::ltl::label_trace;
 use crate::checker::{CheckStatus, Counterexample, PropertyResult};
 use crate::diagnostics::{CaelumError, Result};
+use crate::model::eval::EvalEnv;
 use crate::model::{State, Value};
-use crate::syntax::{BinaryOp, Expr, PropertyBlock, PropertyKind, UnaryOp};
+use crate::syntax::{BinaryOp, Expr, FairnessStrength, PropertyBlock, PropertyKind, UnaryOp};
 
-use super::encode::{Encoder, ResolvedDomain};
+use super::encode::{ConstValue, Encoder, ResolvedDomain};
 use super::setup::BmcSpec;
 use super::solver::{SatLit, Solver};
 
@@ -140,6 +142,12 @@ pub fn check_property_with_solver(
         None
     };
 
+    // Fairness constrains the loop so only fair lassos are admitted as
+    // counterexamples. Only meaningful for the liveness (lasso) shapes.
+    if let Some(lc) = &lasso {
+        encode_fairness(&mut encoder, spec, lc, k)?;
+    }
+
     encode_violation(&mut encoder, spec, &shape, last_observed, lasso.as_ref())?;
 
     let sat = encoder.solve()?;
@@ -150,9 +158,16 @@ pub fn check_property_with_solver(
         // printer will mark `cycle starts at s{cycle_start}`.
         let trace_len = if needs_lasso { k + 1 } else { k + next_depth };
         let trace = decode_trace(spec, &encoder, trace_len);
+        let relations = spec
+            .transition_blocks
+            .iter()
+            .map(|block| (block.name.clone(), &block.expr))
+            .collect::<Vec<_>>();
+        let transitions = label_trace(&trace, &relations, &eval_env_for_spec(spec));
         let counterexample = Counterexample {
             states: trace,
             cycle_start,
+            transitions,
         };
 
         let status = match property.kind {
@@ -254,6 +269,122 @@ fn encode_lasso(encoder: &mut Encoder<'_>, spec: &BmcSpec<'_>, k: usize) -> Resu
         encoder.add_clause(&[-lc_l, all_equal]);
     }
     Ok(lc)
+}
+
+/// Constrain the lasso so that only **fair** loops are admitted: for each fair
+/// transition and each candidate loop start `l`, if the loop starts at `l` then
+/// the fairness acceptance condition must hold over the loop steps `[l, k]`.
+///
+/// `taken(t, i)` is the transition relation literal at step `i` (the same one
+/// `encode_transitions` uses). `enabled(t, i)` is approximated by the
+/// transition's state guard — the conjuncts of its relation that mention no
+/// next-state variable — which is exact for guarded transitions.
+fn encode_fairness(
+    encoder: &mut Encoder<'_>,
+    spec: &BmcSpec<'_>,
+    lc: &[SatLit],
+    k: usize,
+) -> Result<()> {
+    for (strength, name) in &spec.fairness {
+        let Some(block) = spec.transition_blocks.iter().find(|b| &b.name == name) else {
+            continue;
+        };
+        let guard = state_guard(&block.expr);
+
+        for (l, &lc_l) in lc.iter().enumerate() {
+            let mut taken = Vec::with_capacity(k - l + 1);
+            let mut enabled = Vec::with_capacity(k - l + 1);
+            for i in l..=k {
+                taken.push(
+                    encoder
+                        .encode(&block.expr, i)?
+                        .as_bool()
+                        .ok_or_else(|| CaelumError::Model {
+                            message: "BMC: transition relation did not encode to a boolean".into(),
+                        })?,
+                );
+                enabled.push(encode_guard(encoder, &guard, i)?);
+            }
+
+            let any_taken = encoder.bor_many(&taken);
+            let accept = match strength {
+                // weak: ¬(⋀ enabled) ∨ (⋁ taken)
+                FairnessStrength::Weak => {
+                    let all_enabled = encoder.band_many(&enabled);
+                    encoder.bor_many(&[-all_enabled, any_taken])
+                }
+                // strong: ¬(⋁ enabled) ∨ (⋁ taken)
+                FairnessStrength::Strong => {
+                    let any_enabled = encoder.bor_many(&enabled);
+                    encoder.bor_many(&[-any_enabled, any_taken])
+                }
+            };
+            // lc_l → accept
+            encoder.add_clause(&[-lc_l, accept]);
+        }
+    }
+    Ok(())
+}
+
+/// Encode the conjunction of a transition's state-guard conjuncts at time `i`
+/// (an over-approximation of "enabled"). An empty guard encodes to `true`.
+fn encode_guard(encoder: &mut Encoder<'_>, guard: &[&Expr], i: usize) -> Result<SatLit> {
+    let mut lits = Vec::with_capacity(guard.len());
+    for conjunct in guard {
+        lits.push(
+            encoder
+                .encode(conjunct, i)?
+                .as_bool()
+                .ok_or_else(|| CaelumError::Model {
+                    message: "BMC: transition guard did not encode to a boolean".into(),
+                })?,
+        );
+    }
+    if lits.is_empty() {
+        // No pure state guard ⇒ treat as always enabled.
+        return Ok(encoder
+            .encode(&Expr::Bool(true), i)?
+            .as_bool()
+            .expect("bool literal"));
+    }
+    Ok(encoder.band_many(&lits))
+}
+
+/// The state-guard conjuncts of a transition relation: top-level `∧` operands
+/// that reference no next-state (primed) variable.
+fn state_guard(expr: &Expr) -> Vec<&Expr> {
+    let mut out = Vec::new();
+    collect_guard_conjuncts(expr, &mut out);
+    out
+}
+
+fn collect_guard_conjuncts<'a>(expr: &'a Expr, out: &mut Vec<&'a Expr>) {
+    match expr {
+        Expr::Binary {
+            op: BinaryOp::And,
+            lhs,
+            rhs,
+        } => {
+            collect_guard_conjuncts(lhs, out);
+            collect_guard_conjuncts(rhs, out);
+        }
+        other => {
+            if !contains_primed(other) {
+                out.push(other);
+            }
+        }
+    }
+}
+
+fn contains_primed(expr: &Expr) -> bool {
+    match expr {
+        Expr::PrimedName(_) => true,
+        Expr::Indexed { primed, .. } => *primed,
+        Expr::Bool(_) | Expr::Int(_) | Expr::Name(_) | Expr::Unchanged(_) => false,
+        Expr::Quantifier { body, .. } => contains_primed(body),
+        Expr::Unary { expr, .. } => contains_primed(expr),
+        Expr::Binary { lhs, rhs, .. } => contains_primed(lhs) || contains_primed(rhs),
+    }
 }
 
 #[allow(clippy::needless_range_loop)]
@@ -572,6 +703,9 @@ fn is_state_formula(expr: &Expr) -> bool {
             BinaryOp::Until => false,
             _ => is_state_formula(lhs) && is_state_formula(rhs),
         },
+        // Sugar (indexed refs, `unchanged`, quantifiers) is removed by
+        // elaboration before BMC; these arms are defensive and never reached.
+        Expr::Indexed { .. } | Expr::Unchanged(_) | Expr::Quantifier { .. } => true,
     }
 }
 
@@ -593,6 +727,8 @@ fn check_safety_body(expr: &Expr) -> Option<String> {
             ),
             _ => check_safety_body(lhs).or_else(|| check_safety_body(rhs)),
         },
+        // Removed by elaboration before BMC; defensive, never reached.
+        Expr::Indexed { .. } | Expr::Unchanged(_) | Expr::Quantifier { .. } => None,
     }
 }
 
@@ -618,6 +754,8 @@ fn max_next_depth(expr: &Expr) -> Result<usize> {
             _ => max_next_depth(inner)?,
         },
         Expr::Binary { lhs, rhs, .. } => std::cmp::max(max_next_depth(lhs)?, max_next_depth(rhs)?),
+        // Removed by elaboration before BMC; defensive, never reached.
+        Expr::Indexed { .. } | Expr::Unchanged(_) | Expr::Quantifier { .. } => 0,
     })
 }
 
@@ -625,6 +763,35 @@ fn find_cycle_start(encoder: &Encoder<'_>, lc: &[SatLit]) -> Option<usize> {
     lc.iter()
         .enumerate()
         .find_map(|(t, lit)| encoder.lit_value(*lit).then_some(t))
+}
+
+/// Build an [`EvalEnv`] over the decoded trace's variable ordering so trace
+/// labeling can evaluate transition relations on concrete states.
+fn eval_env_for_spec(spec: &BmcSpec<'_>) -> EvalEnv {
+    let constants = spec
+        .constants
+        .iter()
+        .map(|(name, value)| {
+            let value = match value {
+                ConstValue::Bool(b) => Value::Bool(*b),
+                ConstValue::Int(i) => Value::Int(*i),
+                ConstValue::Enum { variant, .. } => Value::Enum(variant.clone()),
+            };
+            (name.clone(), value)
+        })
+        .collect();
+    let enum_values = spec
+        .enum_variant_type
+        .keys()
+        .map(|variant| (variant.clone(), Value::Enum(variant.clone())))
+        .collect();
+    let variables = spec
+        .variables
+        .iter()
+        .enumerate()
+        .map(|(index, decl)| (decl.name.clone(), index))
+        .collect();
+    EvalEnv::new(constants, enum_values, variables)
 }
 
 fn decode_trace(spec: &BmcSpec<'_>, encoder: &Encoder<'_>, total_steps: usize) -> Vec<State> {

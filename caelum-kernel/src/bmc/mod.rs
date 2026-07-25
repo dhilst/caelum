@@ -135,11 +135,11 @@ pub fn check_with_bmc_using(
 mod tests {
     use super::*;
     use crate::checker::CheckStatus;
-    use crate::sema::check_source_file;
+    use crate::sema::{check_source_file, elaborate};
     use crate::syntax::parse_source;
 
     fn check(source: &str, depth: usize) -> CheckReport {
-        let file = parse_source(source).expect("parse");
+        let file = elaborate(&parse_source(source).expect("parse")).expect("elaborate");
         check_source_file(&file).expect("sema");
         check_with_bmc(
             &file,
@@ -153,7 +153,7 @@ mod tests {
     }
 
     fn prove(source: &str, depth: usize) -> CheckReport {
-        let file = parse_source(source).expect("parse");
+        let file = elaborate(&parse_source(source).expect("parse")).expect("elaborate");
         check_source_file(&file).expect("sema");
         check_with_bmc(
             &file,
@@ -161,6 +161,46 @@ mod tests {
             SolverBackend::Varisat,
         )
         .expect("bmc")
+    }
+
+    #[test]
+    fn fairness_excludes_unfair_lasso() {
+        // ◇done fails via a `spin` lasso; weak fairness on `work` (continuously
+        // enabled while ¬done) excludes that lasso, so no fair counterexample.
+        let base = r"
+            let x : 0..1
+            let done : bool
+            init { x = 0 ∧ done = false }
+            transition work { done = false ∧ done' = true ∧ x' = x }
+            transition spin { done' = done ∧ x' = 1 - x }
+            property finishes { ◇ done }
+        ";
+        assert_eq!(check(base, 6).status, CheckStatus::Fail);
+        assert_eq!(
+            check(&format!("{base}\nfairness {{ weak work }}"), 6).status,
+            CheckStatus::Pass
+        );
+    }
+
+    #[test]
+    fn bmc_handles_parameterized_indexed_and_unchanged() {
+        // Elaboration expands this into scalar `power[n1]`/`power[n2]` variables
+        // and per-node transitions before the BMC encoder ever runs.
+        let report = check(
+            r"
+            type Node = enum { n1, n2 }
+            type Power = enum { off, on }
+            let power[node ∈ Node] ∈ Power
+            init { ∀ node ∈ Node: power[node] = off }
+            transition switch(node ∈ Node) {
+              power[node]' = on ∧ unchanged(power except node)
+            }
+            property n1_stays_off { □ (power[n1] = off) }
+            ",
+            4,
+        );
+        assert_eq!(report.status, CheckStatus::Fail);
+        assert!(report.properties[0].counterexample.is_some());
     }
 
     #[test]
@@ -378,11 +418,11 @@ mod z3_tests {
     //! liveness/lasso) driven through `SolverBackend::Z3`.
     use super::*;
     use crate::checker::CheckStatus;
-    use crate::sema::check_source_file;
+    use crate::sema::{check_source_file, elaborate};
     use crate::syntax::parse_source;
 
     fn check(source: &str, depth: usize) -> CheckReport {
-        let file = parse_source(source).expect("parse");
+        let file = elaborate(&parse_source(source).expect("parse")).expect("elaborate");
         check_source_file(&file).expect("sema");
         check_with_bmc(
             &file,
@@ -415,6 +455,23 @@ mod z3_tests {
             .iter()
             .any(|s| matches!(s.values.first(), Some(crate::model::Value::Int(2))));
         assert!(saw_two);
+    }
+
+    #[test]
+    fn fairness_excludes_unfair_lasso() {
+        let base = r"
+            let x : 0..1
+            let done : bool
+            init { x = 0 ∧ done = false }
+            transition work { done = false ∧ done' = true ∧ x' = x }
+            transition spin { done' = done ∧ x' = 1 - x }
+            property finishes { ◇ done }
+        ";
+        assert_eq!(check(base, 6).status, CheckStatus::Fail);
+        assert_eq!(
+            check(&format!("{base}\nfairness {{ weak work }}"), 6).status,
+            CheckStatus::Pass
+        );
     }
 
     #[test]

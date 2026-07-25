@@ -9,8 +9,8 @@ use crate::diagnostics::{CaelumError, Result};
 use crate::model::eval::{eval_expr, expect_int, EvalEnv};
 use crate::model::Value;
 use crate::syntax::{
-    ConstDecl, Domain, DomainBound, InitBlock, Item, PropertyBlock, SourceFile, TransitionBlock,
-    VarDecl,
+    ConstDecl, Domain, DomainBound, FairnessStrength, InitBlock, Item, PropertyBlock, SourceFile,
+    TransitionBlock, VarDecl,
 };
 
 use super::encode::{ConstValue, ResolvedDomain};
@@ -23,6 +23,8 @@ pub struct BmcSpec<'a> {
     pub init_blocks: Vec<&'a InitBlock>,
     pub transition_blocks: Vec<&'a TransitionBlock>,
     pub properties: Vec<&'a PropertyBlock>,
+    /// `(strength, transition instance name)` fairness constraints.
+    pub fairness: Vec<(FairnessStrength, String)>,
 }
 
 pub fn prepare<'a>(file: &'a SourceFile) -> Result<BmcSpec<'a>> {
@@ -102,6 +104,20 @@ pub fn prepare<'a>(file: &'a SourceFile) -> Result<BmcSpec<'a>> {
         })
         .collect();
 
+    let fairness = file
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            Item::Fairness(decl) => Some(decl),
+            _ => None,
+        })
+        .flat_map(|decl| {
+            decl.constraints
+                .iter()
+                .map(|c| (c.strength, c.transition.clone()))
+        })
+        .collect();
+
     Ok(BmcSpec {
         constants,
         enum_variant_type,
@@ -110,6 +126,7 @@ pub fn prepare<'a>(file: &'a SourceFile) -> Result<BmcSpec<'a>> {
         init_blocks,
         transition_blocks,
         properties,
+        fairness,
     })
 }
 

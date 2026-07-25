@@ -1,0 +1,77 @@
+module examples.cluster_liveness
+
+// Cluster provisioning — liveness under fairness.
+//
+// Extends the safety model (`cluster.lum`) with a liveness property: a node
+// that starts powering on eventually finishes provisioning. Without a fairness
+// assumption this fails — an infinite run could service other nodes (or `idle`)
+// forever and never power this one on. The `fairness { weak node_powers_on }`
+// block rules out those unfair runs, and the explicit engine proves the property.
+//
+// Demonstrates: indexed state, parameterized transitions, `unchanged` (with
+// `except`), quantifiers, and a `fairness` block.
+
+type Node = enum { n1, n2 }
+type Image = enum { no_image, compute, storage }
+type Power = enum { off, on }
+type ProvisionStatus = enum { defined, image_assigned, powering_on, provisioned }
+
+let assigned_image[node ∈ Node] ∈ Image
+let requested_power[node ∈ Node] ∈ Power
+let actual_power[node ∈ Node] ∈ Power
+let status[node ∈ Node] ∈ ProvisionStatus
+
+init {
+  ∀ node ∈ Node:
+    assigned_image[node] = no_image ∧
+    requested_power[node] = off ∧
+    actual_power[node] = off ∧
+    status[node] = defined
+}
+
+transition assign_image(node ∈ Node, image ∈ Image) {
+  image ≠ no_image ∧
+  status[node] = defined ∧
+
+  assigned_image[node]' = image ∧
+  status[node]' = image_assigned ∧
+
+  unchanged(assigned_image except node, status except node, requested_power, actual_power)
+}
+
+transition request_power_on(node ∈ Node) {
+  status[node] = image_assigned ∧
+
+  requested_power[node]' = on ∧
+  status[node]' = powering_on ∧
+
+  unchanged(requested_power except node, status except node, assigned_image, actual_power)
+}
+
+transition node_powers_on(node ∈ Node) {
+  status[node] = powering_on ∧
+  requested_power[node] = on ∧
+
+  actual_power[node]' = on ∧
+  status[node]' = provisioned ∧
+
+  unchanged(actual_power except node, status except node, requested_power, assigned_image)
+}
+
+// Keeps every state live (a fully-provisioned cluster does not deadlock).
+transition idle {
+  unchanged(assigned_image, requested_power, actual_power, status)
+}
+
+// A node that is ready to power on must eventually do so.
+fairness {
+  weak node_powers_on
+}
+
+// Liveness: once powering on, a node eventually reaches provisioned.
+property provisioning_finishes {
+  □ (
+    ∀ node ∈ Node:
+      status[node] = powering_on → ◇ (status[node] = provisioned)
+  )
+}
