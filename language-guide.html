@@ -314,7 +314,62 @@ The domain can be an inline definition or a reference to a named type.</p>
 }
 </pre></div>
 </div>
-<p>Variables not mentioned in a transition retain their current value (frame condition).</p>
+<p>A next-state variable that a transition does <strong>not</strong> constrain is left free: the
+transition may move to <em>any</em> value in that variable’s domain. To hold a variable
+fixed you must constrain its next-state value explicitly, e.g. <code class="docutils literal notranslate"><span class="pre">y'</span> <span class="pre">=</span> <span class="pre">y</span></code>. The
+<code class="docutils literal notranslate"><span class="pre">unchanged</span></code> shorthand (below) makes this concise.</p>
+</section>
+<section id="frame-conditions-with-unchanged">
+<h2>Frame conditions with <code class="docutils literal notranslate"><span class="pre">unchanged</span></code><a class="headerlink" href="#frame-conditions-with-unchanged" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">unchanged(...)</span></code> expands to a conjunction of <code class="docutils literal notranslate"><span class="pre">v'</span> <span class="pre">=</span> <span class="pre">v</span></code> frame conditions:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>transition step {
+  x&#39; = x + 1 ∧
+  unchanged(y, z)          // ≡  y&#39; = y ∧ z&#39; = z
+}
+</pre></div>
+</div>
+<p>Arguments must be declared state variables (not constants, enum values, or primed
+names). Duplicates are ignored. For an indexed variable, <code class="docutils literal notranslate"><span class="pre">unchanged(status)</span></code>
+preserves <em>every</em> index; <code class="docutils literal notranslate"><span class="pre">unchanged(status</span> <span class="pre">except</span> <span class="pre">node)</span></code> preserves every index
+other than <code class="docutils literal notranslate"><span class="pre">node</span></code> (see <a class="reference internal" href="#indexed-state"><span class="std std-ref">Indexed state</span></a>).</p>
+</section>
+<section id="parameterized-transitions">
+<h2>Parameterized transitions<a class="headerlink" href="#parameterized-transitions" title="Link to this heading">¶</a></h2>
+<p>A transition may take parameters ranging over finite domains. It is expanded at
+compile time into one concrete transition per tuple in the Cartesian product of
+the parameter domains:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>type Node = enum { n1, n2 }
+
+transition power_on(node ∈ Node) {
+  status[node]&#39; = on ∧ unchanged(status except node)
+}
+</pre></div>
+</div>
+<p>Both <code class="docutils literal notranslate"><span class="pre">∈</span></code> and <code class="docutils literal notranslate"><span class="pre">:</span></code> separate a parameter from its domain. Parameters are
+immutable — they have no next-state (primed) form — and each generated instance
+is named after its arguments (<code class="docutils literal notranslate"><span class="pre">power_on(n1)</span></code>, <code class="docutils literal notranslate"><span class="pre">power_on(n2)</span></code>), which is what
+counterexample traces report.</p>
+</section>
+<section id="indexed-state">
+<span id="id1"></span><h2>Indexed state<a class="headerlink" href="#indexed-state" title="Link to this heading">¶</a></h2>
+<p>A variable may be indexed by a finite domain, declaring one entry per index:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>let status[node ∈ Node] ∈ Power
+</pre></div>
+</div>
+<p>Reference an entry with <code class="docutils literal notranslate"><span class="pre">status[node]</span></code> and its next-state value with
+<code class="docutils literal notranslate"><span class="pre">status[node]'</span></code>. Indexed variables are flattened into one scalar variable per
+index (internally named <code class="docutils literal notranslate"><span class="pre">status[n1]</span></code>, <code class="docutils literal notranslate"><span class="pre">status[n2]</span></code>, …).</p>
+</section>
+<section id="quantifiers">
+<h2>Quantifiers<a class="headerlink" href="#quantifiers" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">∀</span></code> and <code class="docutils literal notranslate"><span class="pre">∃</span></code> range over finite domains and expand to a conjunction or
+disjunction over the domain’s elements:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>init { ∀ node ∈ Node: status[node] = off }
+
+property some_on { □ (∃ node ∈ Node: status[node] = on) }
+</pre></div>
+</div>
+<p>The keyword forms <code class="docutils literal notranslate"><span class="pre">forall</span></code> and <code class="docutils literal notranslate"><span class="pre">exists</span></code> are also accepted.</p>
 </section>
 <section id="properties">
 <h2>Properties<a class="headerlink" href="#properties" title="Link to this heading">¶</a></h2>
@@ -324,6 +379,31 @@ The domain can be an inline definition or a reference to a named type.</p>
 }
 </pre></div>
 </div>
+</section>
+<section id="fairness">
+<h2>Fairness<a class="headerlink" href="#fairness" title="Link to this heading">¶</a></h2>
+<p>Liveness properties (<code class="docutils literal notranslate"><span class="pre">◇</span></code>, <code class="docutils literal notranslate"><span class="pre">□◇</span></code>, <code class="docutils literal notranslate"><span class="pre">until</span></code>) often only hold if the scheduler
+does not neglect a transition forever. A <code class="docutils literal notranslate"><span class="pre">fairness</span></code> block declares such
+assumptions:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>fairness {
+  weak   node_powers_on
+  strong assign_image
+}
+</pre></div>
+</div>
+<p>Each entry names a transition and a strength:</p>
+<ul class="simple">
+<li><p><strong>weak</strong> (justice): a transition that is <em>continuously enabled</em> must
+eventually be taken.</p></li>
+<li><p><strong>strong</strong> (compassion): a transition that is <em>enabled infinitely often</em> must
+eventually be taken.</p></li>
+</ul>
+<p>A named transition applies the constraint to every instance a parameterized
+transition expands into (<code class="docutils literal notranslate"><span class="pre">node_powers_on(n1)</span></code>, <code class="docutils literal notranslate"><span class="pre">node_powers_on(n2)</span></code>, …), so
+“weak <code class="docutils literal notranslate"><span class="pre">node_powers_on</span></code>” means <em>every</em> node eventually powers on. Fairness
+restricts only the infinite paths considered for liveness; it never affects
+safety (<code class="docutils literal notranslate"><span class="pre">□</span></code>) properties. The explicit engine <em>proves</em> fair liveness; the BMC
+engine <em>refutes</em> it (finds fair counterexamples up to the search depth).</p>
 </section>
 <section id="operators">
 <h2>Operators<a class="headerlink" href="#operators" title="Link to this heading">¶</a></h2>
@@ -566,7 +646,12 @@ The domain can be an inline definition or a reference to a named type.</p>
 <li><a class="reference internal" href="#variables">Variables</a></li>
 <li><a class="reference internal" href="#init-blocks">Init Blocks</a></li>
 <li><a class="reference internal" href="#transitions">Transitions</a></li>
+<li><a class="reference internal" href="#frame-conditions-with-unchanged">Frame conditions with <code class="docutils literal notranslate"><span class="pre">unchanged</span></code></a></li>
+<li><a class="reference internal" href="#parameterized-transitions">Parameterized transitions</a></li>
+<li><a class="reference internal" href="#indexed-state">Indexed state</a></li>
+<li><a class="reference internal" href="#quantifiers">Quantifiers</a></li>
 <li><a class="reference internal" href="#properties">Properties</a></li>
+<li><a class="reference internal" href="#fairness">Fairness</a></li>
 <li><a class="reference internal" href="#operators">Operators</a><ul>
 <li><a class="reference internal" href="#temporal-operators">Temporal Operators</a></li>
 <li><a class="reference internal" href="#logical-operators">Logical Operators</a></li>

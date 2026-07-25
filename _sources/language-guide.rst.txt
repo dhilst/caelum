@@ -98,7 +98,76 @@ Define how the system evolves. Primed variables (``x'``) denote the next-state v
      x' = (x + 1) mod (max + 1)
    }
 
-Variables not mentioned in a transition retain their current value (frame condition).
+A next-state variable that a transition does **not** constrain is left free: the
+transition may move to *any* value in that variable's domain. To hold a variable
+fixed you must constrain its next-state value explicitly, e.g. ``y' = y``. The
+``unchanged`` shorthand (below) makes this concise.
+
+Frame conditions with ``unchanged``
+-----------------------------------
+
+``unchanged(...)`` expands to a conjunction of ``v' = v`` frame conditions:
+
+.. code-block:: text
+
+   transition step {
+     x' = x + 1 ∧
+     unchanged(y, z)          // ≡  y' = y ∧ z' = z
+   }
+
+Arguments must be declared state variables (not constants, enum values, or primed
+names). Duplicates are ignored. For an indexed variable, ``unchanged(status)``
+preserves *every* index; ``unchanged(status except node)`` preserves every index
+other than ``node`` (see :ref:`indexed-state`).
+
+Parameterized transitions
+-------------------------
+
+A transition may take parameters ranging over finite domains. It is expanded at
+compile time into one concrete transition per tuple in the Cartesian product of
+the parameter domains:
+
+.. code-block:: text
+
+   type Node = enum { n1, n2 }
+
+   transition power_on(node ∈ Node) {
+     status[node]' = on ∧ unchanged(status except node)
+   }
+
+Both ``∈`` and ``:`` separate a parameter from its domain. Parameters are
+immutable — they have no next-state (primed) form — and each generated instance
+is named after its arguments (``power_on(n1)``, ``power_on(n2)``), which is what
+counterexample traces report.
+
+.. _indexed-state:
+
+Indexed state
+-------------
+
+A variable may be indexed by a finite domain, declaring one entry per index:
+
+.. code-block:: text
+
+   let status[node ∈ Node] ∈ Power
+
+Reference an entry with ``status[node]`` and its next-state value with
+``status[node]'``. Indexed variables are flattened into one scalar variable per
+index (internally named ``status[n1]``, ``status[n2]``, …).
+
+Quantifiers
+-----------
+
+``∀`` and ``∃`` range over finite domains and expand to a conjunction or
+disjunction over the domain's elements:
+
+.. code-block:: text
+
+   init { ∀ node ∈ Node: status[node] = off }
+
+   property some_on { □ (∃ node ∈ Node: status[node] = on) }
+
+The keyword forms ``forall`` and ``exists`` are also accepted.
 
 Properties
 ----------
@@ -110,6 +179,34 @@ Declare temporal properties to check:
    property in_range {
      □ (x >= 0 ∧ x <= max)
    }
+
+Fairness
+--------
+
+Liveness properties (``◇``, ``□◇``, ``until``) often only hold if the scheduler
+does not neglect a transition forever. A ``fairness`` block declares such
+assumptions:
+
+.. code-block:: text
+
+   fairness {
+     weak   node_powers_on
+     strong assign_image
+   }
+
+Each entry names a transition and a strength:
+
+- **weak** (justice): a transition that is *continuously enabled* must
+  eventually be taken.
+- **strong** (compassion): a transition that is *enabled infinitely often* must
+  eventually be taken.
+
+A named transition applies the constraint to every instance a parameterized
+transition expands into (``node_powers_on(n1)``, ``node_powers_on(n2)``, …), so
+"weak ``node_powers_on``" means *every* node eventually powers on. Fairness
+restricts only the infinite paths considered for liveness; it never affects
+safety (``□``) properties. The explicit engine *proves* fair liveness; the BMC
+engine *refutes* it (finds fair counterexamples up to the search depth).
 
 Operators
 ---------

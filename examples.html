@@ -373,6 +373,72 @@ fails because the transitions prevent it.</p></li>
 all safety, liveness, and fairness properties. The <a class="reference internal" href="tutorial.html"><span class="doc">Tutorial</span></a> walks through
 building this example step by step.</p>
 </section>
+<section id="cluster-provisioning">
+<h2>Cluster Provisioning<a class="headerlink" href="#cluster-provisioning" title="Link to this heading">¶</a></h2>
+<p>A multi-node provisioning model that exercises every multi-entity feature at
+once: indexed state, parameterized transitions, <code class="docutils literal notranslate"><span class="pre">unchanged</span></code> (including
+<code class="docutils literal notranslate"><span class="pre">except</span></code>), and quantifiers. Each node advances
+<code class="docutils literal notranslate"><span class="pre">defined</span> <span class="pre">→</span> <span class="pre">image_assigned</span> <span class="pre">→</span> <span class="pre">powering_on</span> <span class="pre">→</span> <span class="pre">provisioned</span></code>.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>type Node = enum { n1, n2 }
+type Image = enum { no_image, compute, storage }
+type Power = enum { off, on }
+type ProvisionStatus = enum { defined, image_assigned, powering_on, provisioned }
+
+let assigned_image[node ∈ Node] ∈ Image
+let requested_power[node ∈ Node] ∈ Power
+let actual_power[node ∈ Node] ∈ Power
+let status[node ∈ Node] ∈ ProvisionStatus
+
+init {
+  ∀ node ∈ Node:
+    assigned_image[node] = no_image ∧
+    requested_power[node] = off ∧
+    actual_power[node] = off ∧
+    status[node] = defined
+}
+
+transition assign_image(node ∈ Node, image ∈ Image) {
+  image ≠ no_image ∧
+  status[node] = defined ∧
+  assigned_image[node]&#39; = image ∧
+  status[node]&#39; = image_assigned ∧
+  unchanged(assigned_image except node, status except node,
+            requested_power, actual_power)
+}
+
+property provisioned_nodes_have_images {
+  □ (∀ node ∈ Node:
+       status[node] = provisioned → assigned_image[node] ≠ no_image)
+}
+</pre></div>
+</div>
+<p><strong>Properties:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">provisioned_nodes_have_images</span></code>: A provisioned node always has a real image.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">provisioned_nodes_are_powered</span></code>: A provisioned node is always powered on.</p></li>
+</ul>
+<p>See <code class="docutils literal notranslate"><span class="pre">examples/cluster/cluster.lum</span></code> for the full specification (all four
+transitions plus an <code class="docutils literal notranslate"><span class="pre">idle</span></code> stutter that keeps a fully-provisioned cluster from
+deadlocking). Counterexample traces name the firing instance, e.g.
+<code class="docutils literal notranslate"><span class="pre">--(assign_image(n2,</span> <span class="pre">compute))--&gt;</span></code>.</p>
+<p>Node-level <em>liveness</em> such as
+<code class="docutils literal notranslate"><span class="pre">□</span> <span class="pre">(status[node]</span> <span class="pre">=</span> <span class="pre">powering_on</span> <span class="pre">→</span> <span class="pre">◇</span> <span class="pre">status[node]</span> <span class="pre">=</span> <span class="pre">provisioned)</span></code> does <strong>not</strong>
+hold under arbitrary interleaving without a fairness assumption, since a path may
+keep servicing other nodes forever. Adding <code class="docutils literal notranslate"><span class="pre">fairness</span> <span class="pre">{</span> <span class="pre">weak</span> <span class="pre">node_powers_on</span> <span class="pre">}</span></code>
+rules out those unfair runs, and the property then holds. See
+<code class="docutils literal notranslate"><span class="pre">examples/cluster/cluster_liveness.lum</span></code> for the runnable version, which the
+explicit engine proves:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>fairness {
+  weak node_powers_on
+}
+
+property provisioning_finishes {
+  □ (∀ node ∈ Node:
+       status[node] = powering_on → ◇ (status[node] = provisioned))
+}
+</pre></div>
+</div>
+</section>
 </section>
 
         </article>
@@ -435,6 +501,7 @@ building this example step by step.</p>
 <li><a class="reference internal" href="#failing-invariant">Failing Invariant</a></li>
 <li><a class="reference internal" href="#implication-and-equivalence">Implication and Equivalence</a></li>
 <li><a class="reference internal" href="#crossroad-traffic-light">Crossroad Traffic Light</a></li>
+<li><a class="reference internal" href="#cluster-provisioning">Cluster Provisioning</a></li>
 </ul>
 </li>
 </ul>

@@ -147,3 +147,74 @@ for reusable enum domains.
 See ``examples/crossroad_traffic_light.lum`` for the full specification with
 all safety, liveness, and fairness properties. The :doc:`tutorial` walks through
 building this example step by step.
+
+Cluster Provisioning
+--------------------
+
+A multi-node provisioning model that exercises every multi-entity feature at
+once: indexed state, parameterized transitions, ``unchanged`` (including
+``except``), and quantifiers. Each node advances
+``defined → image_assigned → powering_on → provisioned``.
+
+.. code-block:: text
+
+   type Node = enum { n1, n2 }
+   type Image = enum { no_image, compute, storage }
+   type Power = enum { off, on }
+   type ProvisionStatus = enum { defined, image_assigned, powering_on, provisioned }
+
+   let assigned_image[node ∈ Node] ∈ Image
+   let requested_power[node ∈ Node] ∈ Power
+   let actual_power[node ∈ Node] ∈ Power
+   let status[node ∈ Node] ∈ ProvisionStatus
+
+   init {
+     ∀ node ∈ Node:
+       assigned_image[node] = no_image ∧
+       requested_power[node] = off ∧
+       actual_power[node] = off ∧
+       status[node] = defined
+   }
+
+   transition assign_image(node ∈ Node, image ∈ Image) {
+     image ≠ no_image ∧
+     status[node] = defined ∧
+     assigned_image[node]' = image ∧
+     status[node]' = image_assigned ∧
+     unchanged(assigned_image except node, status except node,
+               requested_power, actual_power)
+   }
+
+   property provisioned_nodes_have_images {
+     □ (∀ node ∈ Node:
+          status[node] = provisioned → assigned_image[node] ≠ no_image)
+   }
+
+**Properties:**
+
+- ``provisioned_nodes_have_images``: A provisioned node always has a real image.
+- ``provisioned_nodes_are_powered``: A provisioned node is always powered on.
+
+See ``examples/cluster/cluster.lum`` for the full specification (all four
+transitions plus an ``idle`` stutter that keeps a fully-provisioned cluster from
+deadlocking). Counterexample traces name the firing instance, e.g.
+``--(assign_image(n2, compute))-->``.
+
+Node-level *liveness* such as
+``□ (status[node] = powering_on → ◇ status[node] = provisioned)`` does **not**
+hold under arbitrary interleaving without a fairness assumption, since a path may
+keep servicing other nodes forever. Adding ``fairness { weak node_powers_on }``
+rules out those unfair runs, and the property then holds. See
+``examples/cluster/cluster_liveness.lum`` for the runnable version, which the
+explicit engine proves:
+
+.. code-block:: text
+
+   fairness {
+     weak node_powers_on
+   }
+
+   property provisioning_finishes {
+     □ (∀ node ∈ Node:
+          status[node] = powering_on → ◇ (status[node] = provisioned))
+   }
