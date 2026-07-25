@@ -6,7 +6,7 @@ Counter
 
 A simple modular counter that wraps around.
 
-.. code-block:: text
+.. code-block:: lum
 
    module examples.counter
 
@@ -40,7 +40,7 @@ Failing Invariant
 
 Demonstrates a property that fails with a counterexample.
 
-.. code-block:: text
+.. code-block:: lum
 
    module examples.failing_invariant
 
@@ -68,7 +68,7 @@ Run with ``--show-trace`` to see the counterexample:
 Implication and Equivalence
 ---------------------------
 
-.. code-block:: text
+.. code-block:: lum
 
    let x ∈ 0..1
 
@@ -93,7 +93,7 @@ Two traffic lights sharing a named ``Color`` type, with mutual exclusion
 and fairness properties. This example demonstrates the ``type`` keyword
 for reusable enum domains.
 
-.. code-block:: text
+.. code-block:: lum
 
    type Color = enum { red, green, yellow }
 

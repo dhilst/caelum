@@ -578,12 +578,69 @@ system prevents that, the property fails — and Caelum reports PASS.</p>
 </section>
 <section id="running-the-full-specification">
 <h2>Running the Full Specification<a class="headerlink" href="#running-the-full-specification" title="Link to this heading">¶</a></h2>
-<p>Save the complete specification as <code class="docutils literal notranslate"><span class="pre">crossroad.lum</span></code> and run:</p>
+<p>Here is the complete specification. Press <strong>Check ▶</strong> (or <code class="docutils literal notranslate"><span class="pre">Ctrl-Enter</span></code>) to run
+it in your browser — every safety and liveness property should pass, and each
+<code class="docutils literal notranslate"><span class="pre">invalid</span></code> block should fail as expected (which Caelum reports as a pass):</p>
+<div class="highlight-lum notranslate"><div class="highlight"><pre><span></span><span class="k">module</span> <span class="n">examples</span><span class="p">.</span><span class="n">crossroad_traffic_light</span>
+
+<span class="k">type</span> <span class="n">Color</span> <span class="o">=</span> <span class="kt">enum</span> <span class="p">{</span> <span class="n">red</span><span class="p">,</span> <span class="n">green</span><span class="p">,</span> <span class="n">yellow</span> <span class="p">}</span>
+
+<span class="k">let</span> <span class="n">traf1</span> <span class="o">∈</span> <span class="n">Color</span>
+<span class="k">let</span> <span class="n">traf2</span> <span class="o">∈</span> <span class="n">Color</span>
+<span class="k">let</span> <span class="n">timer</span> <span class="o">∈</span> <span class="m">0</span><span class="o">..</span><span class="m">5</span>
+
+<span class="k">init</span> <span class="p">{</span>
+  <span class="n">traf1</span> <span class="o">=</span> <span class="n">green</span> <span class="o">∧</span> <span class="n">traf2</span> <span class="o">=</span> <span class="n">red</span> <span class="o">∧</span> <span class="n">timer</span> <span class="o">=</span> <span class="m">5</span>
+<span class="p">}</span>
+
+<span class="k">transition</span> <span class="n">tick</span> <span class="p">{</span>
+  <span class="n">timer</span> <span class="o">&gt;</span> <span class="m">0</span> <span class="o">∧</span> <span class="n">timer&#39;</span> <span class="o">=</span> <span class="n">timer</span> <span class="o">-</span> <span class="m">1</span> <span class="o">∧</span> <span class="n">traf1&#39;</span> <span class="o">=</span> <span class="n">traf1</span> <span class="o">∧</span> <span class="n">traf2&#39;</span> <span class="o">=</span> <span class="n">traf2</span>
+<span class="p">}</span>
+
+<span class="k">transition</span> <span class="n">traf1_to_yellow</span> <span class="p">{</span>
+  <span class="n">traf1</span> <span class="o">=</span> <span class="n">green</span> <span class="o">∧</span> <span class="n">timer</span> <span class="o">=</span> <span class="m">0</span> <span class="o">∧</span> <span class="n">traf1&#39;</span> <span class="o">=</span> <span class="n">yellow</span> <span class="o">∧</span> <span class="n">traf2&#39;</span> <span class="o">=</span> <span class="n">red</span> <span class="o">∧</span> <span class="n">timer&#39;</span> <span class="o">=</span> <span class="m">2</span>
+<span class="p">}</span>
+
+<span class="k">transition</span> <span class="n">swap_to_traf2</span> <span class="p">{</span>
+  <span class="n">traf1</span> <span class="o">=</span> <span class="n">yellow</span> <span class="o">∧</span> <span class="n">timer</span> <span class="o">=</span> <span class="m">0</span> <span class="o">∧</span> <span class="n">traf1&#39;</span> <span class="o">=</span> <span class="n">red</span> <span class="o">∧</span> <span class="n">traf2&#39;</span> <span class="o">=</span> <span class="n">green</span> <span class="o">∧</span> <span class="n">timer&#39;</span> <span class="o">=</span> <span class="m">5</span>
+<span class="p">}</span>
+
+<span class="k">transition</span> <span class="n">traf2_to_yellow</span> <span class="p">{</span>
+  <span class="n">traf2</span> <span class="o">=</span> <span class="n">green</span> <span class="o">∧</span> <span class="n">timer</span> <span class="o">=</span> <span class="m">0</span> <span class="o">∧</span> <span class="n">traf2&#39;</span> <span class="o">=</span> <span class="n">yellow</span> <span class="o">∧</span> <span class="n">traf1&#39;</span> <span class="o">=</span> <span class="n">red</span> <span class="o">∧</span> <span class="n">timer&#39;</span> <span class="o">=</span> <span class="m">2</span>
+<span class="p">}</span>
+
+<span class="k">transition</span> <span class="n">swap_to_traf1</span> <span class="p">{</span>
+  <span class="n">traf2</span> <span class="o">=</span> <span class="n">yellow</span> <span class="o">∧</span> <span class="n">timer</span> <span class="o">=</span> <span class="m">0</span> <span class="o">∧</span> <span class="n">traf2&#39;</span> <span class="o">=</span> <span class="n">red</span> <span class="o">∧</span> <span class="n">traf1&#39;</span> <span class="o">=</span> <span class="n">green</span> <span class="o">∧</span> <span class="n">timer&#39;</span> <span class="o">=</span> <span class="m">5</span>
+<span class="p">}</span>
+
+<span class="k">property</span> <span class="n">mutual_exclusion</span> <span class="p">{</span>
+  <span class="o">□</span> <span class="o">¬</span> <span class="p">(</span><span class="n">traf1</span> <span class="o">=</span> <span class="n">green</span> <span class="o">∧</span> <span class="n">traf2</span> <span class="o">=</span> <span class="n">green</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="k">property</span> <span class="n">one_moving_at_most</span> <span class="p">{</span>
+  <span class="o">□</span> <span class="p">(</span><span class="n">traf1</span> <span class="o">≠</span> <span class="n">red</span> <span class="o">→</span> <span class="n">traf2</span> <span class="o">=</span> <span class="n">red</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="k">property</span> <span class="n">traf1_eventually_green</span> <span class="p">{</span>
+  <span class="o">□</span> <span class="o">◇</span> <span class="p">(</span><span class="n">traf1</span> <span class="o">=</span> <span class="n">green</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="k">property</span> <span class="n">traf2_eventually_green</span> <span class="p">{</span>
+  <span class="o">□</span> <span class="o">◇</span> <span class="p">(</span><span class="n">traf2</span> <span class="o">=</span> <span class="n">green</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="k">invalid</span> <span class="n">both_green</span> <span class="p">{</span>
+  <span class="o">◇</span> <span class="p">(</span><span class="n">traf1</span> <span class="o">=</span> <span class="n">green</span> <span class="o">∧</span> <span class="n">traf2</span> <span class="o">=</span> <span class="n">green</span><span class="p">)</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>You can also run it from the command line. Save the specification as
+<code class="docutils literal notranslate"><span class="pre">crossroad.lum</span></code> and run:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>caelum<span class="w"> </span>crossroad.lum
 </pre></div>
 </div>
-<p>You should see all properties pass. The full specification is available at
-<code class="docutils literal notranslate"><span class="pre">examples/crossroad_traffic_light.lum</span></code> in the repository.</p>
+<p>The full specification, with every safety, liveness, and fairness property, is
+available at <code class="docutils literal notranslate"><span class="pre">examples/simple/crossroad_traffic_light.lum</span></code> in the repository.</p>
 </section>
 <section id="summary-of-language-features-used">
 <h2>Summary of Language Features Used<a class="headerlink" href="#summary-of-language-features-used" title="Link to this heading">¶</a></h2>
@@ -718,5 +775,6 @@ system prevents that, the property fails — and Caelum reports PASS.</p>
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/scripts/furo.js?v=46bd48cc"></script>
+    <script type="module" src="_static/caelum-init.js?v=956287d7"></script>
     </body>
 </html>

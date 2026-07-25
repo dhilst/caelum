@@ -240,27 +240,27 @@
 <section id="counter">
 <h2>Counter<a class="headerlink" href="#counter" title="Link to this heading">¶</a></h2>
 <p>A simple modular counter that wraps around.</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>module examples.counter
+<div class="highlight-lum notranslate"><div class="highlight"><pre><span></span><span class="k">module</span> <span class="n">examples</span><span class="p">.</span><span class="n">counter</span>
 
-const max = 3
+<span class="k">const</span> <span class="n">max</span> <span class="o">=</span> <span class="m">3</span>
 
-let x ∈ 0..max
+<span class="k">let</span> <span class="n">x</span> <span class="o">∈</span> <span class="m">0</span><span class="o">..</span><span class="n">max</span>
 
-init {
-  x = 0
-}
+<span class="k">init</span> <span class="p">{</span>
+  <span class="n">x</span> <span class="o">=</span> <span class="m">0</span>
+<span class="p">}</span>
 
-transition step {
-  x&#39; = (x + 1) mod (max + 1)
-}
+<span class="k">transition</span> <span class="n">step</span> <span class="p">{</span>
+  <span class="n">x&#39;</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="m">1</span><span class="p">)</span> <span class="ow">mod</span> <span class="p">(</span><span class="n">max</span> <span class="o">+</span> <span class="m">1</span><span class="p">)</span>
+<span class="p">}</span>
 
-property in_range {
-  □ (x &gt;= 0 ∧ x &lt;= max)
-}
+<span class="k">property</span> <span class="n">in_range</span> <span class="p">{</span>
+  <span class="o">□</span> <span class="p">(</span><span class="n">x</span> <span class="o">&gt;=</span> <span class="m">0</span> <span class="o">∧</span> <span class="n">x</span> <span class="o">&lt;=</span> <span class="n">max</span><span class="p">)</span>
+<span class="p">}</span>
 
-property returns_to_zero {
-  □ ◇ (x = 0)
-}
+<span class="k">property</span> <span class="n">returns_to_zero</span> <span class="p">{</span>
+  <span class="o">□</span> <span class="o">◇</span> <span class="p">(</span><span class="n">x</span> <span class="o">=</span> <span class="m">0</span><span class="p">)</span>
+<span class="p">}</span>
 </pre></div>
 </div>
 <p><strong>Properties:</strong></p>
@@ -272,21 +272,21 @@ property returns_to_zero {
 <section id="failing-invariant">
 <h2>Failing Invariant<a class="headerlink" href="#failing-invariant" title="Link to this heading">¶</a></h2>
 <p>Demonstrates a property that fails with a counterexample.</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>module examples.failing_invariant
+<div class="highlight-lum notranslate"><div class="highlight"><pre><span></span><span class="k">module</span> <span class="n">examples</span><span class="p">.</span><span class="n">failing_invariant</span>
 
-let x ∈ 0..2
+<span class="k">let</span> <span class="n">x</span> <span class="o">∈</span> <span class="m">0</span><span class="o">..</span><span class="m">2</span>
 
-init {
-  x = 0
-}
+<span class="k">init</span> <span class="p">{</span>
+  <span class="n">x</span> <span class="o">=</span> <span class="m">0</span>
+<span class="p">}</span>
 
-transition step {
-  x&#39; = (x + 1) mod 3
-}
+<span class="k">transition</span> <span class="n">step</span> <span class="p">{</span>
+  <span class="n">x&#39;</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="m">1</span><span class="p">)</span> <span class="ow">mod</span> <span class="m">3</span>
+<span class="p">}</span>
 
-property never_two {
-  □ (x ≠ 2)
-}
+<span class="k">property</span> <span class="n">never_two</span> <span class="p">{</span>
+  <span class="o">□</span> <span class="p">(</span><span class="n">x</span> <span class="o">≠</span> <span class="m">2</span><span class="p">)</span>
+<span class="p">}</span>
 </pre></div>
 </div>
 <p>The property <code class="docutils literal notranslate"><span class="pre">never_two</span></code> claims <code class="docutils literal notranslate"><span class="pre">x</span></code> is never 2, but the counter reaches 2 on the third step.
@@ -297,19 +297,19 @@ Run with <code class="docutils literal notranslate"><span class="pre">--show-tra
 </section>
 <section id="implication-and-equivalence">
 <h2>Implication and Equivalence<a class="headerlink" href="#implication-and-equivalence" title="Link to this heading">¶</a></h2>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>let x ∈ 0..1
+<div class="highlight-lum notranslate"><div class="highlight"><pre><span></span><span class="k">let</span> <span class="n">x</span> <span class="o">∈</span> <span class="m">0</span><span class="o">..</span><span class="m">1</span>
 
-init { x = 0 }
+<span class="k">init</span> <span class="p">{</span> <span class="n">x</span> <span class="o">=</span> <span class="m">0</span> <span class="p">}</span>
 
-transition toggle { x&#39; = 1 - x }
+<span class="k">transition</span> <span class="n">toggle</span> <span class="p">{</span> <span class="n">x&#39;</span> <span class="o">=</span> <span class="m">1</span> <span class="o">-</span> <span class="n">x</span> <span class="p">}</span>
 
-property implies_example {
-  □ (x = 0 → ◯ x = 1)
-}
+<span class="k">property</span> <span class="n">implies_example</span> <span class="p">{</span>
+  <span class="o">□</span> <span class="p">(</span><span class="n">x</span> <span class="o">=</span> <span class="m">0</span> <span class="o">→</span> <span class="o">◯</span> <span class="n">x</span> <span class="o">=</span> <span class="m">1</span><span class="p">)</span>
+<span class="p">}</span>
 
-property iff_example {
-  □ (x = 0 ↔ ◯ x = 1)
-}
+<span class="k">property</span> <span class="n">iff_example</span> <span class="p">{</span>
+  <span class="o">□</span> <span class="p">(</span><span class="n">x</span> <span class="o">=</span> <span class="m">0</span> <span class="o">↔</span> <span class="o">◯</span> <span class="n">x</span> <span class="o">=</span> <span class="m">1</span><span class="p">)</span>
+<span class="p">}</span>
 </pre></div>
 </div>
 <p>Both properties pass: when <code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">=</span> <span class="pre">0</span></code>, the next state always has <code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">=</span> <span class="pre">1</span></code>, and vice versa.</p>
@@ -319,47 +319,47 @@ property iff_example {
 <p>Two traffic lights sharing a named <code class="docutils literal notranslate"><span class="pre">Color</span></code> type, with mutual exclusion
 and fairness properties. This example demonstrates the <code class="docutils literal notranslate"><span class="pre">type</span></code> keyword
 for reusable enum domains.</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>type Color = enum { red, green, yellow }
+<div class="highlight-lum notranslate"><div class="highlight"><pre><span></span><span class="k">type</span> <span class="n">Color</span> <span class="o">=</span> <span class="kt">enum</span> <span class="p">{</span> <span class="n">red</span><span class="p">,</span> <span class="n">green</span><span class="p">,</span> <span class="n">yellow</span> <span class="p">}</span>
 
-let traf1 ∈ Color
-let traf2 ∈ Color
-let timer ∈ 0..5
+<span class="k">let</span> <span class="n">traf1</span> <span class="o">∈</span> <span class="n">Color</span>
+<span class="k">let</span> <span class="n">traf2</span> <span class="o">∈</span> <span class="n">Color</span>
+<span class="k">let</span> <span class="n">timer</span> <span class="o">∈</span> <span class="m">0</span><span class="o">..</span><span class="m">5</span>
 
-init {
-  traf1 = green ∧ traf2 = red ∧ timer = 5
-}
+<span class="k">init</span> <span class="p">{</span>
+  <span class="n">traf1</span> <span class="o">=</span> <span class="n">green</span> <span class="o">∧</span> <span class="n">traf2</span> <span class="o">=</span> <span class="n">red</span> <span class="o">∧</span> <span class="n">timer</span> <span class="o">=</span> <span class="m">5</span>
+<span class="p">}</span>
 
-transition tick {
-  timer &gt; 0 ∧ timer&#39; = timer - 1 ∧ traf1&#39; = traf1 ∧ traf2&#39; = traf2
-}
+<span class="k">transition</span> <span class="n">tick</span> <span class="p">{</span>
+  <span class="n">timer</span> <span class="o">&gt;</span> <span class="m">0</span> <span class="o">∧</span> <span class="n">timer&#39;</span> <span class="o">=</span> <span class="n">timer</span> <span class="o">-</span> <span class="m">1</span> <span class="o">∧</span> <span class="n">traf1&#39;</span> <span class="o">=</span> <span class="n">traf1</span> <span class="o">∧</span> <span class="n">traf2&#39;</span> <span class="o">=</span> <span class="n">traf2</span>
+<span class="p">}</span>
 
-transition traf1_to_yellow {
-  traf1 = green ∧ timer = 0 ∧ traf1&#39; = yellow ∧ traf2&#39; = red ∧ timer&#39; = 2
-}
+<span class="k">transition</span> <span class="n">traf1_to_yellow</span> <span class="p">{</span>
+  <span class="n">traf1</span> <span class="o">=</span> <span class="n">green</span> <span class="o">∧</span> <span class="n">timer</span> <span class="o">=</span> <span class="m">0</span> <span class="o">∧</span> <span class="n">traf1&#39;</span> <span class="o">=</span> <span class="n">yellow</span> <span class="o">∧</span> <span class="n">traf2&#39;</span> <span class="o">=</span> <span class="n">red</span> <span class="o">∧</span> <span class="n">timer&#39;</span> <span class="o">=</span> <span class="m">2</span>
+<span class="p">}</span>
 
-transition swap_to_traf2 {
-  traf1 = yellow ∧ timer = 0 ∧ traf1&#39; = red ∧ traf2&#39; = green ∧ timer&#39; = 5
-}
+<span class="k">transition</span> <span class="n">swap_to_traf2</span> <span class="p">{</span>
+  <span class="n">traf1</span> <span class="o">=</span> <span class="n">yellow</span> <span class="o">∧</span> <span class="n">timer</span> <span class="o">=</span> <span class="m">0</span> <span class="o">∧</span> <span class="n">traf1&#39;</span> <span class="o">=</span> <span class="n">red</span> <span class="o">∧</span> <span class="n">traf2&#39;</span> <span class="o">=</span> <span class="n">green</span> <span class="o">∧</span> <span class="n">timer&#39;</span> <span class="o">=</span> <span class="m">5</span>
+<span class="p">}</span>
 
-transition traf2_to_yellow {
-  traf2 = green ∧ timer = 0 ∧ traf2&#39; = yellow ∧ traf1&#39; = red ∧ timer&#39; = 2
-}
+<span class="k">transition</span> <span class="n">traf2_to_yellow</span> <span class="p">{</span>
+  <span class="n">traf2</span> <span class="o">=</span> <span class="n">green</span> <span class="o">∧</span> <span class="n">timer</span> <span class="o">=</span> <span class="m">0</span> <span class="o">∧</span> <span class="n">traf2&#39;</span> <span class="o">=</span> <span class="n">yellow</span> <span class="o">∧</span> <span class="n">traf1&#39;</span> <span class="o">=</span> <span class="n">red</span> <span class="o">∧</span> <span class="n">timer&#39;</span> <span class="o">=</span> <span class="m">2</span>
+<span class="p">}</span>
 
-transition swap_to_traf1 {
-  traf2 = yellow ∧ timer = 0 ∧ traf2&#39; = red ∧ traf1&#39; = green ∧ timer&#39; = 5
-}
+<span class="k">transition</span> <span class="n">swap_to_traf1</span> <span class="p">{</span>
+  <span class="n">traf2</span> <span class="o">=</span> <span class="n">yellow</span> <span class="o">∧</span> <span class="n">timer</span> <span class="o">=</span> <span class="m">0</span> <span class="o">∧</span> <span class="n">traf2&#39;</span> <span class="o">=</span> <span class="n">red</span> <span class="o">∧</span> <span class="n">traf1&#39;</span> <span class="o">=</span> <span class="n">green</span> <span class="o">∧</span> <span class="n">timer&#39;</span> <span class="o">=</span> <span class="m">5</span>
+<span class="p">}</span>
 
-property mutual_exclusion {
-  □ ¬ (traf1 = green ∧ traf2 = green)
-}
+<span class="k">property</span> <span class="n">mutual_exclusion</span> <span class="p">{</span>
+  <span class="o">□</span> <span class="o">¬</span> <span class="p">(</span><span class="n">traf1</span> <span class="o">=</span> <span class="n">green</span> <span class="o">∧</span> <span class="n">traf2</span> <span class="o">=</span> <span class="n">green</span><span class="p">)</span>
+<span class="p">}</span>
 
-property traf1_eventually_green {
-  □ ◇ (traf1 = green)
-}
+<span class="k">property</span> <span class="n">traf1_eventually_green</span> <span class="p">{</span>
+  <span class="o">□</span> <span class="o">◇</span> <span class="p">(</span><span class="n">traf1</span> <span class="o">=</span> <span class="n">green</span><span class="p">)</span>
+<span class="p">}</span>
 
-invalid both_green {
-  ◇ (traf1 = green ∧ traf2 = green)
-}
+<span class="k">invalid</span> <span class="n">both_green</span> <span class="p">{</span>
+  <span class="o">◇</span> <span class="p">(</span><span class="n">traf1</span> <span class="o">=</span> <span class="n">green</span> <span class="o">∧</span> <span class="n">traf2</span> <span class="o">=</span> <span class="n">green</span><span class="p">)</span>
+<span class="p">}</span>
 </pre></div>
 </div>
 <p><strong>Properties:</strong></p>
@@ -517,5 +517,6 @@ property provisioning_finishes {
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/scripts/furo.js?v=46bd48cc"></script>
+    <script type="module" src="_static/caelum-init.js?v=956287d7"></script>
     </body>
 </html>
