@@ -19,6 +19,10 @@ echo "==> Building the CodeMirror editor bundle"
 ( cd "$ROOT/editors/codemirror" && npm ci && npm run build )
 cp "$ROOT/editors/codemirror/dist/caelum-editor.js" "$STATIC/"
 
+echo "==> Staging playground example specs"
+mkdir -p "$STATIC/examples"
+cp "$ROOT"/examples/simple/*.lum "$STATIC/examples/"
+
 echo "==> Running Sphinx (uv)"
 cd "$HERE"
 uv sync --group docs

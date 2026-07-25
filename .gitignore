@@ -17,3 +17,4 @@ docs/sphinx/.venv/
 /docs/sphinx/source/_static/caelum_wasm.js
 /docs/sphinx/source/_static/caelum_wasm_bg.wasm
 /docs/sphinx/source/_static/caelum-editor.js
+/docs/sphinx/source/_static/examples/

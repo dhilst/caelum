@@ -78,8 +78,64 @@ async function upgradeCodeBlocks(mountCaelumEditor) {
   }
 }
 
+async function upgradePlayground(mountCaelumEditor) {
+  const host = document.getElementById("caelum-playground");
+  if (!host) return;
+
+  // A `?q=<url>` query parameter overrides the page's default seed, so any
+  // `.lum` file — a relative path under _static/, or an absolute URL (e.g. a
+  // raw.githubusercontent.com link) — can be opened straight in the playground.
+  // This makes specs shareable: whatever is in the box goes into `?q=`, and a
+  // `?q=` on load is fetched automatically.
+  const params = new URLSearchParams(window.location.search);
+  const qParam = params.get("q");
+  const seedUrl = qParam || host.getAttribute("data-seed-url");
+
+  let doc = host.getAttribute("data-seed") || "";
+  if (seedUrl) {
+    try {
+      // An absolute URL ignores the base; a relative one resolves against the
+      // page. Cross-origin fetches (e.g. raw.githubusercontent.com, which sends
+      // `Access-Control-Allow-Origin: *`) work; a host without CORS headers is
+      // blocked and surfaced below.
+      const resp = await fetch(new URL(seedUrl, document.baseURI));
+      if (resp.ok) doc = await resp.text();
+      else if (qParam) doc = "// Could not load " + seedUrl + " — HTTP " + resp.status + "\n";
+    } catch (_e) {
+      if (qParam) doc = "// Could not load " + seedUrl + " (network error or blocked by CORS)\n";
+    }
+  }
+
+  const wasm = await loadWasm().catch(() => null);
+  host.textContent = "";
+  mountCaelumEditor(host, { doc, wasm: wasm || undefined });
+  shieldGlobalKeys(host);
+
+  // Wire the "Load from URL" control (see playground.rst): typing a URL and
+  // pressing Load / Enter reloads the page with `?q=<url>`, so the resulting
+  // address is itself a shareable link to that spec.
+  const urlInput = document.getElementById("caelum-load-url");
+  if (urlInput) {
+    if (qParam) urlInput.value = qParam;
+    const go = () => {
+      const v = urlInput.value.trim();
+      if (v) window.location.search = "?q=" + encodeURIComponent(v);
+    };
+    const loadBtn = document.getElementById("caelum-load-btn");
+    if (loadBtn) loadBtn.addEventListener("click", go);
+    urlInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        go();
+      }
+    });
+  }
+}
+
 async function main() {
-  if (!document.querySelector(".highlight-lum")) return;
+  const hasBlocks = document.querySelector(".highlight-lum");
+  const hasPlayground = document.getElementById("caelum-playground");
+  if (!hasBlocks && !hasPlayground) return;
 
   let mod;
   try {
@@ -91,6 +147,7 @@ async function main() {
   const { mountCaelumEditor } = mod;
 
   await upgradeCodeBlocks(mountCaelumEditor);
+  await upgradePlayground(mountCaelumEditor);
 }
 
 if (document.readyState === "loading") {
