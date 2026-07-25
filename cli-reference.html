@@ -289,6 +289,20 @@ caelum<span class="w"> </span>fmt<span class="w"> </span>--print-unicode-operato
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">human|json</span></code></p></td>
 <td><p>Output format (default: <code class="docutils literal notranslate"><span class="pre">human</span></code>)</p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--engine</span> <span class="pre">explicit|bmc</span></code></p></td>
+<td><p>Checking engine (default: <code class="docutils literal notranslate"><span class="pre">explicit</span></code>). <code class="docutils literal notranslate"><span class="pre">bmc</span></code> runs bounded model checking.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--solver</span> <span class="pre">varisat|cadical|z3</span></code></p></td>
+<td><p>SAT backend for the <code class="docutils literal notranslate"><span class="pre">bmc</span></code> engine (default: <code class="docutils literal notranslate"><span class="pre">z3</span></code>). Requires the
+matching Cargo feature to be compiled in; <code class="docutils literal notranslate"><span class="pre">z3</span></code> links the system
+<code class="docutils literal notranslate"><span class="pre">libz3</span></code> (install <code class="docutils literal notranslate"><span class="pre">libz3-dev</span></code> / the <code class="docutils literal notranslate"><span class="pre">z3</span></code> package).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--bmc-depth</span> <span class="pre">N</span></code></p></td>
+<td><p>Unrolling depth for the <code class="docutils literal notranslate"><span class="pre">bmc</span></code> engine (default: 50)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--prove</span></code> (alias <code class="docutils literal notranslate"><span class="pre">--k-induction</span></code>)</p></td>
+<td><p>Attempt k-induction to certify safety properties under <code class="docutils literal notranslate"><span class="pre">--engine</span> <span class="pre">bmc</span></code></p></td>
+</tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--show-trace</span></code></p></td>
 <td><p>Display counterexample traces on failure</p></td>
 </tr>
