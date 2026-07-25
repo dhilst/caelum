@@ -77,11 +77,11 @@ Implication and Equivalence
    transition toggle { x' = 1 - x }
 
    property implies_example {
-     □ (x = 0 → ◯ x = 1)
+     □ (x = 0 → ◯ (x = 1))
    }
 
    property iff_example {
-     □ (x = 0 ↔ ◯ x = 1)
+     □ (x = 0 ↔ ◯ (x = 1))
    }
 
 Both properties pass: when ``x = 0``, the next state always has ``x = 1``, and vice versa.
