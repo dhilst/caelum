@@ -17,10 +17,14 @@ pub mod unroll;
 
 pub use unroll::BmcOptions;
 
+#[cfg(feature = "bmc-smtlib")]
+pub use solver::smtlib_backend::{SmtOracle, SmtScriptSolver};
+
 use crate::checker::{CheckReport, CheckStatus};
 use crate::diagnostics::Result;
 use crate::syntax::SourceFile;
 
+#[cfg(any(feature = "bmc-varisat", feature = "bmc-cadical", feature = "bmc-z3"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SolverBackend {
     #[cfg(feature = "bmc-varisat")]
@@ -31,6 +35,7 @@ pub enum SolverBackend {
     Z3,
 }
 
+#[cfg(any(feature = "bmc-varisat", feature = "bmc-cadical", feature = "bmc-z3"))]
 impl Default for SolverBackend {
     fn default() -> Self {
         #[cfg(feature = "bmc-varisat")]
@@ -52,6 +57,7 @@ impl Default for SolverBackend {
     }
 }
 
+#[cfg(any(feature = "bmc-varisat", feature = "bmc-cadical", feature = "bmc-z3"))]
 fn make_solver(backend: SolverBackend) -> Box<dyn solver::Solver> {
     match backend {
         #[cfg(feature = "bmc-varisat")]
@@ -63,15 +69,29 @@ fn make_solver(backend: SolverBackend) -> Box<dyn solver::Solver> {
     }
 }
 
+/// Run BMC using one of the built-in native SAT backends.
+#[cfg(any(feature = "bmc-varisat", feature = "bmc-cadical", feature = "bmc-z3"))]
 pub fn check_with_bmc(
     file: &SourceFile,
     options: &BmcOptions,
     backend: SolverBackend,
 ) -> Result<CheckReport> {
+    check_with_bmc_using(file, options, || make_solver(backend))
+}
+
+/// Run BMC with a caller-provided solver factory. Each property (and each
+/// k-induction attempt) gets a fresh solver from `make`. This is the seam that
+/// lets non-native backends — e.g. the SMT-LIB2 oracle driving browser z3.js —
+/// plug in without a `SolverBackend` variant.
+pub fn check_with_bmc_using(
+    file: &SourceFile,
+    options: &BmcOptions,
+    mut make: impl FnMut() -> Box<dyn solver::Solver>,
+) -> Result<CheckReport> {
     let spec = setup::prepare(file)?;
     let mut results = Vec::new();
     for property in &spec.properties {
-        let mut solver = make_solver(backend);
+        let mut solver = make();
         let mut result =
             unroll::check_property_with_solver(&spec, property, options, solver.as_mut())?;
 
@@ -80,7 +100,7 @@ pub fn check_with_bmc(
             && result.status == CheckStatus::Pass
             && unroll::property_eligible_for_induction(property)
         {
-            let mut induction_solver = make_solver(backend);
+            let mut induction_solver = make();
             match unroll::check_induction(&spec, property, options, induction_solver.as_mut())? {
                 unroll::InductionOutcome::Holds => {
                     result.status = CheckStatus::Certified;

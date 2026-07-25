@@ -92,6 +92,8 @@ enum SolverChoice {
     Varisat,
     Cadical,
     Z3,
+    /// Emit SMT-LIB2 and solve via the external `z3` binary (feature `smtlib`).
+    Smtlib,
 }
 
 #[derive(Debug, Args)]
@@ -241,6 +243,29 @@ fn check_bmc(
     show_trace: bool,
 ) -> Result<bool> {
     use caelum_kernel::bmc::{check_with_bmc, BmcOptions, SolverBackend};
+
+    let opts = BmcOptions {
+        depth: engine.bmc_depth,
+        prove: engine.prove,
+    };
+
+    // The SMT-LIB2 path has no `SolverBackend` variant — it drives the external
+    // `z3` binary through the oracle-backed solver factory.
+    #[cfg(feature = "smtlib")]
+    if engine.solver == SolverChoice::Smtlib {
+        use crate::z3_oracle::ProcessZ3Oracle;
+        use caelum_kernel::bmc::{check_with_bmc_using, SmtScriptSolver};
+
+        let report = check_with_bmc_using(&spec.source, &opts, || {
+            Box::new(SmtScriptSolver::new(ProcessZ3Oracle))
+        })?;
+        match format {
+            OutputFormat::Human => print_human_report(spec, None, &report, show_trace, false),
+            OutputFormat::Json => print_json_report(spec, None, &report),
+        }
+        return Ok(report.status != CheckStatus::Fail);
+    }
+
     let backend = match engine.solver {
         #[cfg(feature = "bmc-varisat")]
         SolverChoice::Varisat => SolverBackend::Varisat,
@@ -266,12 +291,16 @@ fn check_bmc(
                 message: "z3 backend not compiled in (enable feature `bmc-z3`)".into(),
             })
         }
+        #[cfg(feature = "smtlib")]
+        SolverChoice::Smtlib => unreachable!("smtlib handled before this match"),
+        #[cfg(not(feature = "smtlib"))]
+        SolverChoice::Smtlib => {
+            return Err(CaelumError::Unsupported {
+                message: "smtlib backend not compiled in (build with `--features smtlib`)".into(),
+            })
+        }
     };
 
-    let opts = BmcOptions {
-        depth: engine.bmc_depth,
-        prove: engine.prove,
-    };
     let report = check_with_bmc(&spec.source, &opts, backend)?;
     match format {
         OutputFormat::Human => print_human_report(spec, None, &report, show_trace, false),

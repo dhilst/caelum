@@ -5,3 +5,4 @@ docs/sphinx/.venv/
 
 # wasm-pack build output
 /caelum-wasm/pkg/
+/caelum-wasm/www/node_modules/

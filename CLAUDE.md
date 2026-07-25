@@ -2,12 +2,35 @@
 
 LTL model checker.
 
+## Workspace layout
+
+Cargo workspace with three crates:
+
+- `caelum-kernel/` — environment-agnostic core (parser, sema, model, checker,
+  bmc, diagnostics). No filesystem/stdout/process; compiles to
+  `wasm32-unknown-unknown`. The import loader is abstracted behind the
+  `ModuleResolver` trait.
+- `caelum-cli/` — clap CLI + `main.rs` + `StdFsResolver` (all env coupling).
+  Produces the `caelum` binary. Backend features forward to the kernel.
+- `caelum-wasm/` — `wasm-bindgen` cdylib (`check_spec`, `check_spec_z3`). See
+  `caelum-wasm/README.md`.
+- `ci/` — the parallel test harness (crate name `harness`).
+
 ## Build & Test
 
 - Cargo lives at `~/.cargo/bin/cargo`; if not in PATH, run `export PATH="$HOME/.cargo/bin:$PATH"` first.
-- `cargo build` — build the project
+- `cargo build` — build the native crates (kernel/cli/ci; wasm is excluded from default-members)
 - `cargo test` — run all unit tests
-- `cargo run -- <spec.lum>` — check a spec file
+- `cargo run -p caelum-cli -- <spec.lum>` — check a spec file
+- `cargo test -p caelum-cli --features smtlib` — test the SMT-LIB2 path against the `z3` binary
+- `wasm-pack build caelum-wasm --target web` — build the wasm module
+
+## Solver backends (BMC engine)
+
+`--solver z3` (default, native libz3) · `varisat` (pure Rust, wasm-viable) ·
+`cadical` · `smtlib` (emits SMT-LIB2 to the external `z3` binary; feature-gated).
+In the browser, `caelum-wasm` uses varisat in-module or offloads SMT-LIB2 to
+z3.js.
 
 ## Harness
 

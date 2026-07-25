@@ -219,3 +219,187 @@ pub mod cadical_backend {
         }
     }
 }
+
+#[cfg(feature = "bmc-smtlib")]
+pub mod smtlib_backend {
+    //! A `Solver` that emits an SMT-LIB2 script and delegates the actual
+    //! solving to a caller-provided [`SmtOracle`] — the browser's z3.js or the
+    //! native `z3` binary. No solver is linked in; this is pure string
+    //! generation plus a tiny model parser, so it builds anywhere (incl. wasm).
+    //!
+    //! Each DIMACS variable K becomes a boolean constant `vK`; each clause an
+    //! `(assert (or ...))`. The engine is batch (all clauses, then one solve),
+    //! which maps to a single script ending in `(check-sat)`/`(get-value ...)`.
+
+    use std::collections::HashMap;
+
+    use super::*;
+
+    /// Runs an SMT-LIB2 script and returns Z3's raw textual output (the
+    /// `check-sat` line followed by any `get-value` output).
+    pub trait SmtOracle {
+        fn solve(&self, script: &str) -> Result<String>;
+    }
+
+    pub struct SmtScriptSolver<O: SmtOracle> {
+        oracle: O,
+        decls: String,
+        asserts: String,
+        n: i32,
+        model: HashMap<i32, bool>,
+    }
+
+    impl<O: SmtOracle> SmtScriptSolver<O> {
+        pub fn new(oracle: O) -> Self {
+            Self {
+                oracle,
+                decls: String::new(),
+                asserts: String::new(),
+                n: 0,
+                model: HashMap::new(),
+            }
+        }
+
+        fn lit(l: SatLit) -> String {
+            let var = l.unsigned_abs();
+            if l > 0 {
+                format!("v{var}")
+            } else {
+                format!("(not v{var})")
+            }
+        }
+    }
+
+    impl<O: SmtOracle> Solver for SmtScriptSolver<O> {
+        fn new_var(&mut self) -> i32 {
+            self.n += 1;
+            self.decls
+                .push_str(&format!("(declare-const v{} Bool)\n", self.n));
+            self.n
+        }
+
+        fn add_clause(&mut self, clause: &[SatLit]) {
+            match clause.len() {
+                0 => self.asserts.push_str("(assert false)\n"),
+                1 => self
+                    .asserts
+                    .push_str(&format!("(assert {})\n", Self::lit(clause[0]))),
+                _ => {
+                    let lits: Vec<String> = clause.iter().map(|&l| Self::lit(l)).collect();
+                    self.asserts
+                        .push_str(&format!("(assert (or {}))\n", lits.join(" ")));
+                }
+            }
+        }
+
+        fn solve(&mut self) -> Result<bool> {
+            // Lead with `(reset)` so the script is self-contained: oracles that
+            // reuse a solver/context across calls (e.g. one z3.js context for
+            // several properties) won't collide on re-declared vars or a
+            // re-set logic. Fresh-process oracles (the CLI's `z3 -in`) are
+            // unaffected.
+            let mut script = String::from("(reset)\n(set-logic QF_UF)\n");
+            script.push_str(&self.decls);
+            script.push_str(&self.asserts);
+            script.push_str("(check-sat)\n");
+            if self.n > 0 {
+                let vars: Vec<String> = (1..=self.n).map(|k| format!("v{k}")).collect();
+                script.push_str(&format!("(get-value ({}))\n", vars.join(" ")));
+            }
+
+            let output = self.oracle.solve(&script)?;
+            let trimmed = output.trim_start();
+            // Order matters: "unsat" starts with "sat" only after the "un".
+            if trimmed.starts_with("unsat") {
+                return Ok(false);
+            }
+            if trimmed.starts_with("unknown") {
+                return Err(CaelumError::Model {
+                    message: "smtlib oracle returned unknown".into(),
+                });
+            }
+            if !trimmed.starts_with("sat") {
+                return Err(CaelumError::Model {
+                    message: format!("smtlib oracle returned unexpected output: {trimmed}"),
+                });
+            }
+            self.model.clear();
+            parse_model(trimmed, &mut self.model);
+            Ok(true)
+        }
+
+        fn model_value(&self, var: i32) -> bool {
+            assert!(var > 0, "model_value expects positive variable index");
+            *self.model.get(&var).unwrap_or(&false)
+        }
+    }
+
+    /// Parse `((v1 true) (v2 false) ...)` pairs out of Z3's `get-value` output.
+    /// Missing variables default to false (matching the SAT backends).
+    fn parse_model(output: &str, model: &mut HashMap<i32, bool>) {
+        let cleaned = output.replace('(', " ").replace(')', " ");
+        let tokens: Vec<&str> = cleaned.split_whitespace().collect();
+        let mut i = 0;
+        while i < tokens.len() {
+            if let Some(rest) = tokens[i].strip_prefix('v') {
+                if let Ok(var) = rest.parse::<i32>() {
+                    if let Some(&value) = tokens.get(i + 1) {
+                        match value {
+                            "true" => {
+                                model.insert(var, true);
+                                i += 2;
+                                continue;
+                            }
+                            "false" => {
+                                model.insert(var, false);
+                                i += 2;
+                                continue;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            i += 1;
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        /// Records the script and replays a canned Z3 answer.
+        struct FakeOracle {
+            answer: String,
+        }
+        impl SmtOracle for FakeOracle {
+            fn solve(&self, _script: &str) -> Result<String> {
+                Ok(self.answer.clone())
+            }
+        }
+
+        #[test]
+        fn parses_sat_model_and_reads_values() {
+            let mut s = SmtScriptSolver::new(FakeOracle {
+                answer: "sat\n((v1 true) (v2 false) (v3 true))\n".into(),
+            });
+            let a = s.new_var();
+            let b = s.new_var();
+            let c = s.new_var();
+            s.add_clause(&[a, -b]);
+            assert!(s.solve().expect("solve"));
+            assert!(s.model_value(a));
+            assert!(!s.model_value(b));
+            assert!(s.model_value(c));
+        }
+
+        #[test]
+        fn reports_unsat() {
+            let mut s = SmtScriptSolver::new(FakeOracle {
+                answer: "unsat\n".into(),
+            });
+            let _ = s.new_var();
+            assert!(!s.solve().expect("solve"));
+        }
+    }
+}

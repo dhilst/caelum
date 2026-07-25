@@ -16,4 +16,6 @@ caelum-kernel = { path = "../caelum-kernel", default-features = false, features 
     "bmc-smtlib",
 ] }
 wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
 serde_json.workspace = true
