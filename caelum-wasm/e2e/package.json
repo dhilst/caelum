@@ -1,0 +1,9 @@
+{
+  "name": "caelum-wasm-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Node integration test: caelum-wasm check_spec_z3 against real z3.js",
+  "dependencies": {
+    "z3-solver": "^5.0.0"
+  }
+}

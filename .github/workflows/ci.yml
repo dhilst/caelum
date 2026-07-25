@@ -11,8 +11,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - name: Install Z3
-        run: sudo apt-get update && sudo apt-get install -y libz3-dev
-      - name: Run CI harness
+      - name: Install Z3 (library + binary)
+        run: sudo apt-get update && sudo apt-get install -y libz3-dev z3
+      - name: Run CI harness (tests + examples)
         run: cargo run --manifest-path ci/Cargo.toml
+      - name: SMT-LIB2 backend tests (kernel + cli, real z3)
+        run: |
+          cargo test -p caelum-kernel --features bmc-smtlib
+          cargo test -p caelum-cli --features smtlib
+      - name: Build wasm crate
+        run: cargo build -p caelum-wasm --target wasm32-unknown-unknown
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - name: z3.js integration test (wasm module + real z3.js)
+        run: |
+          wasm-pack build caelum-wasm --target nodejs --out-dir pkg
+          cd caelum-wasm/e2e
+          npm install
+          node z3.test.mjs
