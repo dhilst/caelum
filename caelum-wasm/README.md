@@ -14,6 +14,18 @@ WebAssembly bindings for the Caelum LTL model checker.
   second wasm module. `solveFn` is `(script: string) => Promise<string>`
   returning Z3's raw `check-sat`/`get-value` output.
 
+### Report shape
+
+All three return a JSON report string. On success:
+`{ tool, status: "pass"|"fail", files, items, properties: [...], diagnostics: [] }`.
+On failure the report carries `{ tool, error, diagnostics: [...] }`, where each
+diagnostic is `{ severity: "error", message, start_line, start_col, end_line,
+end_col, byte_start, byte_end }` (line/column 1-based; the span fields are
+present for parse and semantic errors and omitted for positionless ones). An
+editor maps by 1-based line/column, which is Unicode-safe against Caelum's
+`∀`/`□`/`∧` operators. `diagnostics` is always present — empty on success — so a
+consumer can clear stale markers unconditionally.
+
 The native Z3 cannot link into a wasm module (it needs a C++ runtime), so the
 z3.js path is **two modules**: caelum-wasm encodes to SMT-LIB2, z3.js solves.
 Because z3.js's solve is async and the BMC engine is synchronous, `check_spec_z3`

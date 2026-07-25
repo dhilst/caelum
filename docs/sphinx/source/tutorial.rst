@@ -385,14 +385,73 @@ system prevents that, the property fails — and Caelum reports PASS.
 Running the Full Specification
 ------------------------------
 
-Save the complete specification as ``crossroad.lum`` and run:
+Here is the complete specification. Press **Check ▶** (or ``Ctrl-Enter``) to run
+it in your browser — every safety and liveness property should pass, and each
+``invalid`` block should fail as expected (which Caelum reports as a pass):
+
+.. code-block:: lum
+
+   module examples.crossroad_traffic_light
+
+   type Color = enum { red, green, yellow }
+
+   let traf1 ∈ Color
+   let traf2 ∈ Color
+   let timer ∈ 0..5
+
+   init {
+     traf1 = green ∧ traf2 = red ∧ timer = 5
+   }
+
+   transition tick {
+     timer > 0 ∧ timer' = timer - 1 ∧ traf1' = traf1 ∧ traf2' = traf2
+   }
+
+   transition traf1_to_yellow {
+     traf1 = green ∧ timer = 0 ∧ traf1' = yellow ∧ traf2' = red ∧ timer' = 2
+   }
+
+   transition swap_to_traf2 {
+     traf1 = yellow ∧ timer = 0 ∧ traf1' = red ∧ traf2' = green ∧ timer' = 5
+   }
+
+   transition traf2_to_yellow {
+     traf2 = green ∧ timer = 0 ∧ traf2' = yellow ∧ traf1' = red ∧ timer' = 2
+   }
+
+   transition swap_to_traf1 {
+     traf2 = yellow ∧ timer = 0 ∧ traf2' = red ∧ traf1' = green ∧ timer' = 5
+   }
+
+   property mutual_exclusion {
+     □ ¬ (traf1 = green ∧ traf2 = green)
+   }
+
+   property one_moving_at_most {
+     □ (traf1 ≠ red → traf2 = red)
+   }
+
+   property traf1_eventually_green {
+     □ ◇ (traf1 = green)
+   }
+
+   property traf2_eventually_green {
+     □ ◇ (traf2 = green)
+   }
+
+   invalid both_green {
+     ◇ (traf1 = green ∧ traf2 = green)
+   }
+
+You can also run it from the command line. Save the specification as
+``crossroad.lum`` and run:
 
 .. code-block:: bash
 
    caelum crossroad.lum
 
-You should see all properties pass. The full specification is available at
-``examples/crossroad_traffic_light.lum`` in the repository.
+The full specification, with every safety, liveness, and fairness property, is
+available at ``examples/simple/crossroad_traffic_light.lum`` in the repository.
 
 Summary of Language Features Used
 ----------------------------------

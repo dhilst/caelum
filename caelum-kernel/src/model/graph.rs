@@ -261,7 +261,7 @@ fn collect_constants(file: &SourceFile) -> Result<HashMap<String, Value>> {
     let mut constants = HashMap::new();
 
     for item in &file.items {
-        if let Item::Const(ConstDecl { name, expr }) = item {
+        if let Item::Const(ConstDecl { name, expr, .. }) = item {
             let local_env = EvalEnv::new(constants.clone(), HashMap::new(), HashMap::new());
             let value = eval_expr(expr, &local_env, None, None)?;
             constants.insert(name.clone(), value);

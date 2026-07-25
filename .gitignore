@@ -8,3 +8,12 @@ docs/sphinx/.venv/
 /caelum-wasm/www/node_modules/
 /caelum-wasm/e2e/node_modules/
 /caelum-wasm/e2e/package-lock.json
+
+# CodeMirror editor package
+/editors/codemirror/node_modules/
+/editors/codemirror/dist/
+
+# Docs runtime assets copied by build.sh (generated; caelum-init.js is source)
+/docs/sphinx/source/_static/caelum_wasm.js
+/docs/sphinx/source/_static/caelum_wasm_bg.wasm
+/docs/sphinx/source/_static/caelum-editor.js

@@ -100,11 +100,13 @@ pub fn elaborate(file: &SourceFile) -> Result<SourceFile> {
             Item::Var(decl) => env.expand_var(decl, &mut items)?,
             Item::Init(block) => items.push(Item::Init(InitBlock {
                 expr: env.elab_expr(&block.expr, &Bindings::new())?,
+                span: block.span,
             })),
             Item::Property(block) => items.push(Item::Property(PropertyBlock {
                 kind: block.kind,
                 name: block.name.clone(),
                 expr: env.elab_expr(&block.expr, &Bindings::new())?,
+                span: block.span,
             })),
             Item::Transition(block) => {
                 for concrete in env.expand_transition(block)? {
@@ -166,7 +168,7 @@ impl Env {
         // enum variants) so integer range bounds can be resolved.
         let mut constants: HashMap<String, Value> = HashMap::new();
         for item in &file.items {
-            if let Item::Const(ConstDecl { name, expr }) = item {
+            if let Item::Const(ConstDecl { name, expr, .. }) = item {
                 let local = EvalEnv::new(constants.clone(), enum_values.clone(), HashMap::new());
                 let value = eval_expr(expr, &local, None, None)?;
                 constants.insert(name.clone(), value);
@@ -201,6 +203,7 @@ impl Env {
             Domain::Named(name) => {
                 let resolved = self.types.get(name).ok_or_else(|| CaelumError::Semantic {
                     message: format!("unknown type `{name}`"),
+                    span: None,
                 })?;
                 self.domain_elems(resolved)
             }
@@ -228,6 +231,7 @@ impl Env {
                         name: indexed_name(&decl.name, &elem),
                         index: None,
                         domain: decl.domain.clone(),
+                        span: decl.span,
                     }));
                 }
             }
@@ -243,6 +247,7 @@ impl Env {
                 name: block.name.clone(),
                 params: Vec::new(),
                 expr,
+                span: block.span,
             }]);
         }
 
@@ -257,6 +262,7 @@ impl Env {
                     "transition parameter domain must be finite (parameter `{}` of `{}`)",
                     param.name, block.name
                 ),
+                span: None,
             })?);
         }
 
@@ -273,6 +279,7 @@ impl Env {
                 name: instance_name(&block.name, &labels),
                 params: Vec::new(),
                 expr,
+                span: block.span,
             });
         }
         Ok(result)
@@ -292,6 +299,7 @@ impl Env {
                         "transition parameter domain must be finite (parameter `{}` of `{}`)",
                         param.name, block.name
                     ),
+                    span: None,
                 }
             })?);
         }
@@ -319,6 +327,7 @@ impl Env {
                         "unknown transition in fairness declaration `{}`",
                         constraint.transition
                     ),
+                    span: None,
                 }
             })?;
             for name in names {
@@ -328,7 +337,10 @@ impl Env {
                 });
             }
         }
-        Ok(FairnessDecl { constraints })
+        Ok(FairnessDecl {
+            constraints,
+            span: decl.span,
+        })
     }
 
     /// Recursively elaborate an expression under the given bindings.
@@ -414,6 +426,7 @@ impl Env {
     fn check_index_member(&self, var: &str, elem: &Elem) -> Result<()> {
         let domain = self.indexed_vars.get(var).ok_or_else(|| CaelumError::Semantic {
             message: format!("`{var}` is not an indexed state variable"),
+            span: None,
         })?;
         let members = self.domain_elems(domain)?;
         if members.contains(elem) {
@@ -594,6 +607,7 @@ fn instance_name(base: &str, labels: &[String]) -> String {
 fn semantic_error<T>(message: impl Into<String>) -> Result<T> {
     Err(CaelumError::Semantic {
         message: message.into(),
+        span: None,
     })
 }
 

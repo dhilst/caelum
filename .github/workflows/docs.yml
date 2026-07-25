@@ -14,15 +14,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: Install uv
         uses: astral-sh/setup-uv@v4
 
-      - name: Build Sphinx docs
+      # build.sh compiles caelum-wasm (--target web), bundles the CodeMirror
+      # editor, stages both into source/_static/, and runs Sphinx.
+      - name: Build docs (wasm + editor + Sphinx)
         working-directory: docs/sphinx
-        run: |
-          uv sync --group docs
-          uv run sphinx-build -b html source build/html
-          touch build/html/.nojekyll
+        run: ./build.sh
 
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4

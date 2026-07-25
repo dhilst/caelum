@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::diagnostics::{Result, CaelumError};
+use crate::diagnostics::{CaelumError, Result, Span};
 use crate::syntax::{BinaryOp, Domain, DomainBound, Expr, Item, SourceFile, UnaryOp, VarDecl};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,6 +38,10 @@ struct Checker {
     transitions: HashMap<String, ()>,
     properties: HashMap<String, ()>,
     declarations: HashMap<String, ()>,
+    /// Span of the declaration currently being checked, stamped onto every
+    /// semantic error so an editor can point at the offending item. Expr-level
+    /// errors inherit the enclosing declaration's span (v1 granularity).
+    current_span: Option<Span>,
 }
 
 pub fn check_source_file(file: &SourceFile) -> Result<()> {
@@ -47,6 +51,7 @@ pub fn check_source_file(file: &SourceFile) -> Result<()> {
 impl Checker {
     fn check(mut self, file: &SourceFile) -> Result<()> {
         for item in &file.items {
+            self.current_span = Some(item_span(item));
             match item {
                 Item::TypeDecl(decl) => {
                     self.ensure_unused_name(&decl.name)?;
@@ -87,7 +92,7 @@ impl Checker {
                 Item::Transition(block) => {
                     self.ensure_unused_name(&block.name)?;
                     if self.transitions.insert(block.name.clone(), ()).is_some() {
-                        return semantic_error(format!(
+                        return self.semantic_error(format!(
                             "duplicate transition declaration `{}`",
                             block.name
                         ));
@@ -98,7 +103,7 @@ impl Checker {
                 Item::Property(block) => {
                     self.ensure_unused_name(&block.name)?;
                     if self.properties.insert(block.name.clone(), ()).is_some() {
-                        return semantic_error(format!(
+                        return self.semantic_error(format!(
                             "duplicate property declaration `{}`",
                             block.name
                         ));
@@ -115,9 +120,10 @@ impl Checker {
         // file, so validate them once every transition name is recorded.
         for item in &file.items {
             if let Item::Fairness(decl) = item {
+                self.current_span = Some(decl.span);
                 for constraint in &decl.constraints {
                     if !self.transitions.contains_key(&constraint.transition) {
-                        return semantic_error(format!(
+                        return self.semantic_error(format!(
                             "unknown transition in fairness declaration `{}`",
                             constraint.transition
                         ));
@@ -170,7 +176,7 @@ impl Checker {
             }
             Domain::Enum { variants } => {
                 if variants.is_empty() {
-                    semantic_error(format!("enum domain for `{var_name}` has no variants"))
+                    self.semantic_error(format!("enum domain for `{var_name}` has no variants"))
                 } else {
                     Ok(Type::Enum(var_name.to_owned()))
                 }
@@ -181,6 +187,7 @@ impl Checker {
                         message: format!(
                             "unknown type `{type_name}` in declaration of `{var_name}`"
                         ),
+                        span: self.current_span,
                     })?;
                 match type_domain {
                     Domain::Enum { .. } => Ok(Type::Enum(type_name.clone())),
@@ -196,7 +203,7 @@ impl Checker {
         match domain {
             Domain::Enum { variants } => {
                 if variants.is_empty() {
-                    semantic_error(format!("enum type `{type_name}` has no variants"))
+                    self.semantic_error(format!("enum type `{type_name}` has no variants"))
                 } else {
                     Ok(())
                 }
@@ -208,7 +215,7 @@ impl Checker {
             }
             Domain::Bool => Ok(()),
             Domain::Named(_) => {
-                semantic_error(format!("type `{type_name}` cannot alias another named type"))
+                self.semantic_error(format!("type `{type_name}` cannot alias another named type"))
             }
         }
     }
@@ -219,12 +226,12 @@ impl Checker {
             DomainBound::Name(name) => {
                 let symbol = self.symbol(name)?;
                 if symbol.kind != SymbolKind::Const {
-                    return semantic_error(format!(
+                    return self.semantic_error(format!(
                         "range bound `{name}` must refer to an integer constant"
                     ));
                 }
                 if symbol.ty != Type::Int {
-                    return semantic_error(format!(
+                    return self.semantic_error(format!(
                         "range bound `{name}` must be int, found {}",
                         display_type(&symbol.ty)
                     ));
@@ -239,7 +246,7 @@ impl Checker {
         if ty == Type::Bool {
             Ok(())
         } else {
-            semantic_error(format!(
+            self.semantic_error(format!(
                 "{context} must be boolean, found {}",
                 display_type(&ty)
             ))
@@ -253,7 +260,7 @@ impl Checker {
             Expr::Name(name) => {
                 let symbol = self.symbol(name)?;
                 if placement == Placement::Const && symbol.kind == SymbolKind::Var {
-                    return semantic_error(format!(
+                    return self.semantic_error(format!(
                         "constant expression cannot refer to state variable `{name}`"
                     ));
                 }
@@ -261,13 +268,13 @@ impl Checker {
             }
             Expr::PrimedName(name) => {
                 if placement != Placement::Transition {
-                    return semantic_error(format!(
+                    return self.semantic_error(format!(
                         "primed variable `{name}'` is only allowed in transitions"
                     ));
                 }
                 let symbol = self.symbol(name)?;
                 if symbol.kind != SymbolKind::Var {
-                    return semantic_error(format!(
+                    return self.semantic_error(format!(
                         "only state variables can be primed: `{name}'`"
                     ));
                 }
@@ -275,7 +282,7 @@ impl Checker {
             }
             Expr::Unary { op, expr } => self.unary_type(*op, expr, placement),
             Expr::Binary { op, lhs, rhs } => self.binary_type(*op, lhs, rhs, placement),
-            Expr::Indexed { .. } | Expr::Unchanged(_) | Expr::Quantifier { .. } => semantic_error(
+            Expr::Indexed { .. } | Expr::Unchanged(_) | Expr::Quantifier { .. } => self.semantic_error(
                 "internal error: sugar expression reached type checking without elaboration \
                  (indexed reference, `unchanged`, or quantifier)",
             ),
@@ -294,7 +301,7 @@ impl Checker {
             }
             UnaryOp::Always | UnaryOp::Eventually | UnaryOp::Next => {
                 if placement != Placement::Property {
-                    return semantic_error("temporal operators are only allowed in properties");
+                    return self.semantic_error("temporal operators are only allowed in properties");
                 }
                 self.expect_type(expr, placement, Type::Bool, "temporal operator")?;
                 Ok(Type::Bool)
@@ -326,7 +333,7 @@ impl Checker {
                 if lhs_ty == rhs_ty {
                     Ok(Type::Bool)
                 } else {
-                    semantic_error(format!(
+                    self.semantic_error(format!(
                         "equality operands must have the same type, found {} and {}",
                         display_type(&lhs_ty),
                         display_type(&rhs_ty)
@@ -340,7 +347,7 @@ impl Checker {
             }
             BinaryOp::Until => {
                 if placement != Placement::Property {
-                    return semantic_error("temporal operators are only allowed in properties");
+                    return self.semantic_error("temporal operators are only allowed in properties");
                 }
                 self.expect_type(lhs, placement, Type::Bool, "until operator")?;
                 self.expect_type(rhs, placement, Type::Bool, "until operator")?;
@@ -360,7 +367,7 @@ impl Checker {
         if actual == expected {
             Ok(())
         } else {
-            semantic_error(format!(
+            self.semantic_error(format!(
                 "{context} expected {}, found {}",
                 display_type(&expected),
                 display_type(&actual)
@@ -369,14 +376,17 @@ impl Checker {
     }
 
     fn symbol(&self, name: &str) -> Result<&Symbol> {
-        self.symbols.get(name).ok_or_else(|| CaelumError::Semantic {
-            message: format!("unknown identifier `{name}`"),
-        })
+        self.symbols
+            .get(name)
+            .ok_or_else(|| CaelumError::Semantic {
+                message: format!("unknown identifier `{name}`"),
+                span: self.current_span,
+            })
     }
 
     fn ensure_unused_name(&self, name: &str) -> Result<()> {
         if self.declarations.contains_key(name) {
-            semantic_error(format!("duplicate declaration `{name}`"))
+            self.semantic_error(format!("duplicate declaration `{name}`"))
         } else {
             Ok(())
         }
@@ -385,12 +395,28 @@ impl Checker {
     fn record_declaration(&mut self, name: &str) {
         self.declarations.insert(name.to_owned(), ());
     }
+
+    /// Build a semantic error stamped with the declaration currently being
+    /// checked, so consumers can render it as an inline diagnostic.
+    fn semantic_error<T>(&self, message: impl Into<String>) -> Result<T> {
+        Err(CaelumError::Semantic {
+            message: message.into(),
+            span: self.current_span,
+        })
+    }
 }
 
-fn semantic_error<T>(message: impl Into<String>) -> Result<T> {
-    Err(CaelumError::Semantic {
-        message: message.into(),
-    })
+/// The source span of a top-level item, used to locate semantic errors.
+fn item_span(item: &Item) -> Span {
+    match item {
+        Item::TypeDecl(decl) => decl.span,
+        Item::Const(decl) => decl.span,
+        Item::Var(decl) => decl.span,
+        Item::Init(block) => block.span,
+        Item::Transition(block) => block.span,
+        Item::Property(block) => block.span,
+        Item::Fairness(decl) => decl.span,
+    }
 }
 
 fn display_type(ty: &Type) -> String {
@@ -433,6 +459,18 @@ mod tests {
         let err = check("property p { missing }").expect_err("spec should fail");
 
         assert!(err.to_string().contains("unknown identifier `missing`"));
+    }
+
+    #[test]
+    fn semantic_error_carries_declaration_span() {
+        // The offending `property p` is on line 2 after a leading newline; the
+        // semantic error should point at that declaration.
+        let err = check("\nproperty p { missing }").expect_err("spec should fail");
+        let CaelumError::Semantic { span: Some(span), .. } = err else {
+            panic!("expected a Semantic error with a span, got {err:?}");
+        };
+        assert_eq!(span.start_line, 2);
+        assert_eq!(span.start_col, 1);
     }
 
     #[test]

@@ -133,7 +133,7 @@ pub fn prepare<'a>(file: &'a SourceFile) -> Result<BmcSpec<'a>> {
 fn collect_constants(file: &SourceFile) -> Result<HashMap<String, Value>> {
     let mut constants = HashMap::new();
     for item in &file.items {
-        if let Item::Const(ConstDecl { name, expr }) = item {
+        if let Item::Const(ConstDecl { name, expr, .. }) = item {
             let env = EvalEnv::new(constants.clone(), HashMap::new(), HashMap::new());
             let value = eval_expr(expr, &env, None, None)?;
             constants.insert(name.clone(), value);

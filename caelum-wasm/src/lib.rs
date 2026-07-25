@@ -31,6 +31,19 @@ use caelum_kernel::model::{build_graph_with_options, BuildOptions};
 use caelum_kernel::sema::{check_source_file, elaborate};
 use caelum_kernel::syntax::{parse_source, Item, SourceFile};
 
+/// An error surfaced by the async z3 path: either a kernel error (which may
+/// carry a source span) or a plain message from the JS solver boundary.
+enum WasmError {
+    Kernel(CaelumError),
+    Message(String),
+}
+
+impl From<CaelumError> for WasmError {
+    fn from(err: CaelumError) -> Self {
+        WasmError::Kernel(err)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Synchronous, in-module varisat path
 // ---------------------------------------------------------------------------
@@ -74,7 +87,7 @@ pub fn check_spec(source: &str, opts_json: &str) -> String {
 pub fn check_spec_multi(files_json: &str, root: &str, opts_json: &str) -> String {
     let files: HashMap<String, String> = match serde_json::from_str(files_json) {
         Ok(files) => files,
-        Err(err) => return error_json(&format!("invalid files_json: {err}")),
+        Err(err) => return error_json_msg(&format!("invalid files_json: {err}")),
     };
     run(&root.to_string(), files, opts_json)
 }
@@ -82,11 +95,11 @@ pub fn check_spec_multi(files_json: &str, root: &str, opts_json: &str) -> String
 fn run(root: &ModuleId, files: HashMap<String, String>, opts_json: &str) -> String {
     let opts = match parse_opts(opts_json) {
         Ok(opts) => opts,
-        Err(msg) => return error_json(&msg),
+        Err(msg) => return error_json_msg(&msg),
     };
     match run_inner(root, &files, &opts) {
         Ok(value) => value.to_string(),
-        Err(err) => error_json(&err.to_string()),
+        Err(err) => error_json(&err),
     }
 }
 
@@ -163,7 +176,8 @@ impl SmtOracle for ReplayOracle {
 pub async fn check_spec_z3(source: String, opts_json: String, solve_fn: js_sys::Function) -> String {
     match check_spec_z3_inner(&source, &opts_json, &solve_fn).await {
         Ok(value) => value.to_string(),
-        Err(message) => error_json(&message),
+        Err(WasmError::Kernel(err)) => error_json(&err),
+        Err(WasmError::Message(message)) => error_json_msg(&message),
     }
 }
 
@@ -171,14 +185,14 @@ async fn check_spec_z3_inner(
     source: &str,
     opts_json: &str,
     solve_fn: &js_sys::Function,
-) -> std::result::Result<serde_json::Value, String> {
-    let opts = parse_opts(opts_json)?;
+) -> std::result::Result<serde_json::Value, WasmError> {
+    let opts = parse_opts(opts_json).map_err(WasmError::Message)?;
     let depth = opts.get("bmc_depth").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
 
-    let parsed = parse_source(source).map_err(|e| e.to_string())?;
-    let file = elaborate(&parsed).map_err(|e| e.to_string())?;
-    check_source_file(&file).map_err(|e| e.to_string())?;
-    let spec = prepare_bmc(&file).map_err(|e| e.to_string())?;
+    let parsed = parse_source(source)?;
+    let file = elaborate(&parsed)?;
+    check_source_file(&file)?;
+    let spec = prepare_bmc(&file)?;
     let options = BmcOptions {
         depth,
         prove: false,
@@ -195,8 +209,7 @@ async fn check_spec_z3_inner(
             let mut capture = SmtScriptSolver::new(CaptureOracle {
                 script: cell.clone(),
             });
-            check_property_with_solver(&spec, property, &options, &mut capture)
-                .map_err(|e| e.to_string())?
+            check_property_with_solver(&spec, property, &options, &mut capture)?
         };
         let script = cell.borrow_mut().take();
         let Some(script) = script else {
@@ -207,21 +220,20 @@ async fn check_spec_z3_inner(
         // Solve the captured script with z3.js (async).
         let promise = solve_fn
             .call1(&JsValue::NULL, &JsValue::from_str(&script))
-            .map_err(|e| format!("solve_fn threw: {e:?}"))?;
+            .map_err(|e| WasmError::Message(format!("solve_fn threw: {e:?}")))?;
         let promise: Promise = promise
             .dyn_into()
-            .map_err(|_| "solve_fn must return a Promise".to_string())?;
+            .map_err(|_| WasmError::Message("solve_fn must return a Promise".to_string()))?;
         let answer = JsFuture::from(promise)
             .await
-            .map_err(|e| format!("z3 solve rejected: {e:?}"))?
+            .map_err(|e| WasmError::Message(format!("z3 solve rejected: {e:?}")))?
             .as_string()
-            .ok_or_else(|| "z3 solve must resolve to a string".to_string())?;
+            .ok_or_else(|| WasmError::Message("z3 solve must resolve to a string".to_string()))?;
 
         // Pass B: re-run the deterministic encoder and decode using the model
         // z3 returned. Variable ids match Pass A, so the model lines up.
         let mut replay = SmtScriptSolver::new(ReplayOracle { answer });
-        let result = check_property_with_solver(&spec, property, &options, &mut replay)
-            .map_err(|e| e.to_string())?;
+        let result = check_property_with_solver(&spec, property, &options, &mut replay)?;
         results.push(result);
     }
 
@@ -312,9 +324,89 @@ fn report_json_parts(source: &SourceFile, files: usize, report: &CheckReport) ->
         "files": files,
         "items": source.item_count(),
         "properties": properties,
+        // Present and empty on success so the editor clears stale markers.
+        "diagnostics": [],
     })
 }
 
-fn error_json(message: &str) -> String {
-    serde_json::json!({ "tool": "caelum", "error": message }).to_string()
+/// Encode a kernel error as an editor-friendly diagnostic. Parse and semantic
+/// errors carry a source span (1-based line/col plus byte offsets, following the
+/// convention the CodeMirror bridge expects); other errors are positionless.
+fn diagnostic_from_error(err: &CaelumError) -> serde_json::Value {
+    let span = match err {
+        CaelumError::Parse { span, .. } => *span,
+        CaelumError::Semantic { span, .. } => *span,
+        _ => None,
+    };
+    let mut diagnostic = serde_json::Map::new();
+    diagnostic.insert("severity".into(), serde_json::json!("error"));
+    diagnostic.insert("message".into(), serde_json::json!(err.to_string()));
+    if let Some(span) = span {
+        diagnostic.insert("start_line".into(), serde_json::json!(span.start_line));
+        diagnostic.insert("start_col".into(), serde_json::json!(span.start_col));
+        diagnostic.insert("end_line".into(), serde_json::json!(span.end_line));
+        diagnostic.insert("end_col".into(), serde_json::json!(span.end_col));
+        diagnostic.insert("byte_start".into(), serde_json::json!(span.byte_start));
+        diagnostic.insert("byte_end".into(), serde_json::json!(span.byte_end));
+    }
+    serde_json::Value::Object(diagnostic)
+}
+
+/// Error report for a kernel error, with a structured `diagnostics` array.
+fn error_json(err: &CaelumError) -> String {
+    serde_json::json!({
+        "tool": "caelum",
+        "error": err.to_string(),
+        "diagnostics": [diagnostic_from_error(err)],
+    })
+    .to_string()
+}
+
+/// Error report for a plain message with no source location (bad JSON input,
+/// solver-boundary failures).
+fn error_json_msg(message: &str) -> String {
+    serde_json::json!({
+        "tool": "caelum",
+        "error": message,
+        "diagnostics": [{ "severity": "error", "message": message }],
+    })
+    .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_error_report_carries_a_located_diagnostic() {
+        // Unterminated property block: a parse error the editor should locate.
+        let json = check_spec("property p { x = ", "{}");
+        let report: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(report.get("error").is_some(), "report: {json}");
+        let diag = &report["diagnostics"][0];
+        assert_eq!(diag["severity"], "error");
+        assert_eq!(diag["start_line"], 1);
+        assert!(diag["start_col"].as_u64().unwrap() >= 1);
+    }
+
+    #[test]
+    fn semantic_error_report_carries_a_located_diagnostic() {
+        // `missing` is undefined; the error points at the property declaration.
+        let json = check_spec("\nproperty p { missing }", "{}");
+        let report: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let diag = &report["diagnostics"][0];
+        assert_eq!(diag["severity"], "error");
+        assert_eq!(diag["start_line"], 2);
+    }
+
+    #[test]
+    fn passing_spec_reports_empty_diagnostics() {
+        let json = check_spec(
+            "let x: 0..2\ninit { x = 0 }\ntransition s { x' = (x + 1) mod 3 }\nproperty p { [] (x >= 0) }",
+            "{\"engine\":\"explicit\"}",
+        );
+        let report: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(report["status"], "pass", "report: {json}");
+        assert_eq!(report["diagnostics"].as_array().unwrap().len(), 0);
+    }
 }

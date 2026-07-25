@@ -4,13 +4,18 @@ use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
 
-use crate::diagnostics::{Result, CaelumError};
+use crate::diagnostics::{CaelumError, Result, Span};
 
 use super::ast::*;
 
 #[derive(Parser)]
 #[grammar = "syntax/grammar.pest"]
 struct CaelumParser;
+
+/// Span of a pair, for stamping onto AST declaration nodes.
+fn span_of(pair: &Pair<'_, Rule>) -> Span {
+    Span::from_pest(pair.as_span())
+}
 
 pub fn parse_source(source: &str) -> Result<SourceFile> {
     parse_source_file(Path::new("<memory>"), source)
@@ -20,6 +25,7 @@ pub fn parse_source_file(path: &Path, source: &str) -> Result<SourceFile> {
     let mut pairs = CaelumParser::parse(Rule::file, source).map_err(|err| CaelumError::Parse {
         path: path.display().to_string(),
         message: err.to_string(),
+        span: Some(Span::from_parse_error(&err)),
     })?;
 
     let file = pairs.next().expect("pest returned no file pair");
@@ -32,24 +38,26 @@ fn parse_file(path: &Path, pair: Pair<'_, Rule>) -> Result<SourceFile> {
     let mut items = Vec::new();
 
     for child in pair.into_inner() {
+        let span = span_of(&child);
         match child.as_rule() {
             Rule::module_decl => module = Some(parse_module_decl(child)),
             Rule::import_decl => imports.push(parse_import_decl(path, child)?),
-            Rule::type_decl => items.push(Item::TypeDecl(parse_type_decl(child)?)),
-            Rule::const_decl => items.push(Item::Const(parse_const_decl(child)?)),
-            Rule::var_decl => items.push(Item::Var(parse_var_decl(child)?)),
-            Rule::init_block => items.push(Item::Init(parse_init_block(child)?)),
+            Rule::type_decl => items.push(Item::TypeDecl(parse_type_decl(span, child)?)),
+            Rule::const_decl => items.push(Item::Const(parse_const_decl(span, child)?)),
+            Rule::var_decl => items.push(Item::Var(parse_var_decl(span, child)?)),
+            Rule::init_block => items.push(Item::Init(parse_init_block(span, child)?)),
             Rule::transition_block => {
-                items.push(Item::Transition(parse_transition_block(child)?));
+                items.push(Item::Transition(parse_transition_block(span, child)?));
             }
-            Rule::property_block => items.push(Item::Property(parse_property_block(child)?)),
-            Rule::invalid_block => items.push(Item::Property(parse_invalid_block(child)?)),
-            Rule::fairness_block => items.push(Item::Fairness(parse_fairness_block(child))),
+            Rule::property_block => items.push(Item::Property(parse_property_block(span, child)?)),
+            Rule::invalid_block => items.push(Item::Property(parse_invalid_block(span, child)?)),
+            Rule::fairness_block => items.push(Item::Fairness(parse_fairness_block(span, child))),
             Rule::EOI => {}
             rule => {
                 return Err(CaelumError::Parse {
                     path: path.display().to_string(),
                     message: format!("unexpected top-level rule: {rule:?}"),
+                    span: Some(span),
                 });
             }
         }
@@ -87,7 +95,7 @@ fn parse_import_decl(path: &Path, pair: Pair<'_, Rule>) -> Result<ImportDecl> {
     })
 }
 
-fn parse_type_decl(pair: Pair<'_, Rule>) -> Result<TypeDecl> {
+fn parse_type_decl(span: Span, pair: Pair<'_, Rule>) -> Result<TypeDecl> {
     let mut inner = pair.into_inner();
     let name = inner
         .next()
@@ -95,10 +103,10 @@ fn parse_type_decl(pair: Pair<'_, Rule>) -> Result<TypeDecl> {
         .as_str()
         .to_owned();
     let domain = parse_domain(inner.next().expect("type_decl must contain type body"))?;
-    Ok(TypeDecl { name, domain })
+    Ok(TypeDecl { name, domain, span })
 }
 
-fn parse_const_decl(pair: Pair<'_, Rule>) -> Result<ConstDecl> {
+fn parse_const_decl(span: Span, pair: Pair<'_, Rule>) -> Result<ConstDecl> {
     let mut inner = pair.into_inner();
     let name = inner
         .next()
@@ -107,10 +115,10 @@ fn parse_const_decl(pair: Pair<'_, Rule>) -> Result<ConstDecl> {
         .to_owned();
     let expr = parse_expr_pair(inner.next().expect("const_decl must contain expr"))?;
 
-    Ok(ConstDecl { name, expr })
+    Ok(ConstDecl { name, expr, span })
 }
 
-fn parse_var_decl(pair: Pair<'_, Rule>) -> Result<VarDecl> {
+fn parse_var_decl(span: Span, pair: Pair<'_, Rule>) -> Result<VarDecl> {
     let mut inner = pair.into_inner();
     let name = inner
         .next()
@@ -131,6 +139,7 @@ fn parse_var_decl(pair: Pair<'_, Rule>) -> Result<VarDecl> {
         name,
         index,
         domain,
+        span,
     })
 }
 
@@ -147,12 +156,12 @@ fn parse_param(pair: Pair<'_, Rule>) -> Result<TransitionParam> {
     Ok(TransitionParam { name, domain })
 }
 
-fn parse_init_block(pair: Pair<'_, Rule>) -> Result<InitBlock> {
+fn parse_init_block(span: Span, pair: Pair<'_, Rule>) -> Result<InitBlock> {
     let expr = parse_block_expr(pair.into_inner().next().expect("init must contain block"))?;
-    Ok(InitBlock { expr })
+    Ok(InitBlock { expr, span })
 }
 
-fn parse_transition_block(pair: Pair<'_, Rule>) -> Result<TransitionBlock> {
+fn parse_transition_block(span: Span, pair: Pair<'_, Rule>) -> Result<TransitionBlock> {
     let mut inner = pair.into_inner();
     let name = inner
         .next()
@@ -172,10 +181,15 @@ fn parse_transition_block(pair: Pair<'_, Rule>) -> Result<TransitionBlock> {
     };
     let expr = parse_block_expr(next)?;
 
-    Ok(TransitionBlock { name, params, expr })
+    Ok(TransitionBlock {
+        name,
+        params,
+        expr,
+        span,
+    })
 }
 
-fn parse_property_block(pair: Pair<'_, Rule>) -> Result<PropertyBlock> {
+fn parse_property_block(span: Span, pair: Pair<'_, Rule>) -> Result<PropertyBlock> {
     let mut inner = pair.into_inner();
     let name = inner
         .next()
@@ -188,10 +202,11 @@ fn parse_property_block(pair: Pair<'_, Rule>) -> Result<PropertyBlock> {
         kind: PropertyKind::Property,
         name,
         expr,
+        span,
     })
 }
 
-fn parse_invalid_block(pair: Pair<'_, Rule>) -> Result<PropertyBlock> {
+fn parse_invalid_block(span: Span, pair: Pair<'_, Rule>) -> Result<PropertyBlock> {
     let mut inner = pair.into_inner();
     let name = inner
         .next()
@@ -204,6 +219,7 @@ fn parse_invalid_block(pair: Pair<'_, Rule>) -> Result<PropertyBlock> {
         kind: PropertyKind::Invalid,
         name,
         expr,
+        span,
     })
 }
 
@@ -229,7 +245,7 @@ fn parse_quant_op(pair: Pair<'_, Rule>) -> QuantKind {
     }
 }
 
-fn parse_fairness_block(pair: Pair<'_, Rule>) -> FairnessDecl {
+fn parse_fairness_block(span: Span, pair: Pair<'_, Rule>) -> FairnessDecl {
     let constraints = pair
         .into_inner()
         .map(|entry| {
@@ -253,7 +269,7 @@ fn parse_fairness_block(pair: Pair<'_, Rule>) -> FairnessDecl {
             }
         })
         .collect();
-    FairnessDecl { constraints }
+    FairnessDecl { constraints, span }
 }
 
 fn parse_block_expr(pair: Pair<'_, Rule>) -> Result<Expr> {
@@ -287,6 +303,7 @@ fn parse_domain(pair: Pair<'_, Rule>) -> Result<Domain> {
         rule => Err(CaelumError::Parse {
             path: "<memory>".to_string(),
             message: format!("unexpected domain rule: {rule:?}"),
+            span: Some(span_of(&pair)),
         }),
     }
 }
@@ -298,6 +315,7 @@ fn parse_domain_bound(pair: Pair<'_, Rule>) -> Result<DomainBound> {
         rule => Err(CaelumError::Parse {
             path: "<memory>".to_string(),
             message: format!("unexpected range bound rule: {rule:?}"),
+            span: Some(span_of(&pair)),
         }),
     }
 }
@@ -373,6 +391,7 @@ fn parse_expr_pair(pair: Pair<'_, Rule>) -> Result<Expr> {
         rule => Err(CaelumError::Parse {
             path: "<memory>".to_string(),
             message: format!("unexpected expression rule: {rule:?}"),
+            span: Some(span_of(&pair)),
         }),
     }
 }
@@ -498,9 +517,11 @@ fn binary_op_from_pair(pair: Pair<'_, Rule>) -> BinaryOp {
 }
 
 fn parse_i64(pair: Pair<'_, Rule>) -> Result<i64> {
+    let span = span_of(&pair);
     pair.as_str().parse::<i64>().map_err(|err| CaelumError::Parse {
         path: "<memory>".to_string(),
         message: format!("invalid integer literal `{}`: {err}", pair.as_str()),
+        span: Some(span),
     })
 }
 
@@ -517,6 +538,7 @@ fn unescape_string(path: &Path, raw: &str) -> Result<String> {
         let escaped = chars.next().ok_or_else(|| CaelumError::Parse {
             path: path.display().to_string(),
             message: "unterminated string escape".to_owned(),
+            span: None,
         })?;
 
         match escaped {
@@ -529,6 +551,7 @@ fn unescape_string(path: &Path, raw: &str) -> Result<String> {
                 return Err(CaelumError::Parse {
                     path: path.display().to_string(),
                     message: format!("unsupported string escape: \\{other}"),
+                    span: None,
                 });
             }
         }
@@ -859,6 +882,30 @@ mod tests {
     #[test]
     fn empty_unchanged_is_a_parse_error() {
         assert!(parse_source("transition t { unchanged() }").is_err());
+    }
+
+    #[test]
+    fn parse_error_reports_span() {
+        // `property p { x = }` — the parser fails at the `}` on line 1.
+        let err = parse_source("property p { x = }").expect_err("should fail to parse");
+        let CaelumError::Parse { span: Some(span), .. } = err else {
+            panic!("expected a Parse error with a span, got {err:?}");
+        };
+        assert_eq!(span.start_line, 1);
+        // The failure points somewhere inside the single-line source.
+        assert_eq!(span.end_line, 1);
+        assert!(span.start_col >= 1);
+    }
+
+    #[test]
+    fn declaration_span_locates_the_source() {
+        // The var decl is on the second line (after the leading newline).
+        let file = parse_source("\nlet x ∈ 0..2\n").expect("should parse");
+        let Item::Var(decl) = &file.items[0] else {
+            panic!("expected a var decl");
+        };
+        assert_eq!(decl.span.start_line, 2);
+        assert_eq!(decl.span.start_col, 1);
     }
 
     #[test]

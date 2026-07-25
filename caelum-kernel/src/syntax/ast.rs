@@ -1,5 +1,7 @@
 use serde::Serialize;
 
+use crate::diagnostics::Span;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceFile {
     pub module: Option<ModuleName>,
@@ -34,6 +36,7 @@ pub enum Item {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FairnessDecl {
     pub constraints: Vec<FairnessConstraint>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,12 +57,14 @@ pub enum FairnessStrength {
 pub struct TypeDecl {
     pub name: String,
     pub domain: Domain,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConstDecl {
     pub name: String,
     pub expr: Expr,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,11 +75,13 @@ pub struct VarDecl {
     /// declaration into one scalar variable per index value.
     pub index: Option<TransitionParam>,
     pub domain: Domain,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InitBlock {
     pub expr: Expr,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,6 +92,7 @@ pub struct TransitionBlock {
     /// per tuple in the Cartesian product of the parameter domains.
     pub params: Vec<TransitionParam>,
     pub expr: Expr,
+    pub span: Span,
 }
 
 /// A named binding over a finite domain, shared by transition parameters and
@@ -107,6 +115,7 @@ pub struct PropertyBlock {
     pub kind: PropertyKind,
     pub name: String,
     pub expr: Expr,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
