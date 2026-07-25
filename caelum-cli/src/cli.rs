@@ -4,13 +4,15 @@ use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
-use crate::checker::ltl::counterexample_as_json;
-use crate::checker::{check_properties, CheckReport, CheckStatus};
-use crate::diagnostics::{CaelumError, Result};
-use crate::loader::{load_spec, LoadOptions, LoadedSpec};
-use crate::model::{build_graph_with_options, BuildOptions, ModelGraph};
-use crate::sema::check_source_file;
-use crate::syntax::{parse_source_file, PrintMode, Printer, PropertyKind, SourceFile};
+use caelum_kernel::checker::ltl::counterexample_as_json;
+use caelum_kernel::checker::{check_properties, CheckReport, CheckStatus};
+use caelum_kernel::diagnostics::{CaelumError, Result};
+use caelum_kernel::loader::{load_spec_with, LoadedSpec};
+use caelum_kernel::model::{build_graph_with_options, BuildOptions, ModelGraph};
+use caelum_kernel::sema::check_source_file;
+use caelum_kernel::syntax::{parse_source_file, PrintMode, Printer, PropertyKind, SourceFile};
+
+use crate::fs_resolver::StdFsResolver;
 
 #[derive(Debug, Parser)]
 #[command(name = "caelum")]
@@ -145,9 +147,7 @@ pub fn run() -> ExitCode {
 
 fn run_cli(cli: Cli) -> Result<bool> {
     let print_mode = cli.printer.mode();
-    let load_options = LoadOptions {
-        include_paths: cli.include_paths,
-    };
+    let resolver = StdFsResolver::new(cli.include_paths);
     let build_options = BuildOptions {
         max_states: cli.max_states,
     };
@@ -163,14 +163,14 @@ fn run_cli(cli: Cli) -> Result<bool> {
         Some(Command::Check { spec }) => check(
             &spec,
             cli.format,
-            &load_options,
+            &resolver,
             &build_options,
             &engine_opts,
             cli.show_trace,
             cli.dump_graph,
         ),
         Some(Command::Parse { spec }) => {
-            parse(&spec, cli.format, &load_options)?;
+            parse(&spec, cli.format, &resolver)?;
             Ok(true)
         }
         Some(Command::Fmt { spec }) => {
@@ -184,7 +184,7 @@ fn run_cli(cli: Cli) -> Result<bool> {
             check(
                 &spec,
                 cli.format,
-                &load_options,
+                &resolver,
                 &build_options,
                 &engine_opts,
                 cli.show_trace,
@@ -205,13 +205,14 @@ struct EngineOptions {
 fn check(
     path: &Path,
     format: OutputFormat,
-    load_options: &LoadOptions,
+    resolver: &StdFsResolver,
     build_options: &BuildOptions,
     engine: &EngineOptions,
     show_trace: bool,
     dump_graph: bool,
 ) -> Result<bool> {
-    let spec = load_spec(path, load_options)?;
+    let root = StdFsResolver::canonical_id(path)?;
+    let spec = load_spec_with(&root, resolver)?;
     check_source_file(&spec.source)?;
 
     match engine.engine {
@@ -239,7 +240,7 @@ fn check_bmc(
     engine: &EngineOptions,
     show_trace: bool,
 ) -> Result<bool> {
-    use crate::bmc::{check_with_bmc, BmcOptions, SolverBackend};
+    use caelum_kernel::bmc::{check_with_bmc, BmcOptions, SolverBackend};
     let backend = match engine.solver {
         #[cfg(feature = "bmc-varisat")]
         SolverChoice::Varisat => SolverBackend::Varisat,
@@ -293,8 +294,9 @@ fn check_bmc(
     })
 }
 
-fn parse(path: &Path, format: OutputFormat, load_options: &LoadOptions) -> Result<()> {
-    let spec = load_spec(path, load_options)?;
+fn parse(path: &Path, format: OutputFormat, resolver: &StdFsResolver) -> Result<()> {
+    let root = StdFsResolver::canonical_id(path)?;
+    let spec = load_spec_with(&root, resolver)?;
 
     match format {
         OutputFormat::Human => println!("{:#?}", spec.source),
@@ -453,7 +455,7 @@ fn print_json_report(spec: &LoadedSpec, graph: Option<&ModelGraph>, report: &Che
     println!("{}", serde_json::Value::Object(top));
 }
 
-fn format_state(graph: &ModelGraph, state: &crate::model::State) -> String {
+fn format_state(graph: &ModelGraph, state: &caelum_kernel::model::State) -> String {
     graph
         .variables
         .iter()
@@ -463,7 +465,7 @@ fn format_state(graph: &ModelGraph, state: &crate::model::State) -> String {
         .join(", ")
 }
 
-fn format_state_named(names: &[String], state: &crate::model::State) -> String {
+fn format_state_named(names: &[String], state: &caelum_kernel::model::State) -> String {
     names
         .iter()
         .zip(&state.values)
@@ -480,7 +482,7 @@ fn bmc_variable_names(spec: &LoadedSpec, graph: Option<&ModelGraph>) -> Vec<Stri
         .items
         .iter()
         .filter_map(|item| match item {
-            crate::syntax::Item::Var(decl) => Some(decl.name.clone()),
+            caelum_kernel::syntax::Item::Var(decl) => Some(decl.name.clone()),
             _ => None,
         })
         .collect()
@@ -488,7 +490,7 @@ fn bmc_variable_names(spec: &LoadedSpec, graph: Option<&ModelGraph>) -> Vec<Stri
 
 fn counterexample_to_json_named(
     names: &[String],
-    counterexample: &crate::checker::Counterexample,
+    counterexample: &caelum_kernel::checker::Counterexample,
 ) -> serde_json::Value {
     let states = counterexample
         .states
@@ -512,8 +514,8 @@ fn counterexample_to_json_named(
 fn load_and_parse(path: &Path) -> Result<SourceFile> {
     validate_extension(path)?;
     let source = fs::read_to_string(path).map_err(|source| CaelumError::ReadFile {
-        path: path.to_path_buf(),
-        source,
+        path: path.display().to_string(),
+        message: source.to_string(),
     })?;
     parse_source_file(path, &source)
 }
@@ -523,7 +525,7 @@ fn validate_extension(path: &Path) -> Result<()> {
         Ok(())
     } else {
         Err(CaelumError::InvalidExtension {
-            path: path.to_path_buf(),
+            path: path.display().to_string(),
         })
     }
 }

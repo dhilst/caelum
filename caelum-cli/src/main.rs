@@ -1,5 +1,8 @@
 use std::process::ExitCode;
 
+mod cli;
+mod fs_resolver;
+
 fn main() -> ExitCode {
-    caelum::cli::run()
+    cli::run()
 }

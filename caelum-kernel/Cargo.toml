@@ -1,0 +1,25 @@
+[package]
+name = "caelum-kernel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Environment-agnostic LTL model-checking core for Caelum"
+
+[dependencies]
+pest.workspace = true
+pest_derive.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+varisat = { version = "0.2", optional = true }
+cadical = { version = "0.1", optional = true }
+z3 = { version = "0.20", optional = true }
+
+[features]
+default = ["bmc-varisat", "bmc-z3"]
+bmc-varisat = ["dep:varisat"]
+bmc-cadical = ["dep:cadical"]
+bmc-z3 = ["dep:z3"]
+# Pure-Rust SMT-LIB2 emitting backend driven by a caller-provided oracle
+# (browser z3.js, or the native `z3` binary). No native linkage; wasm-safe.
+bmc-smtlib = []

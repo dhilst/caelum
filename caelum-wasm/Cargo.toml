@@ -1,0 +1,19 @@
+[package]
+name = "caelum-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WebAssembly bindings for the Caelum LTL model checker"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Pure-Rust varisat backend + the SMT-LIB2 oracle backend (driven by z3.js).
+# No native cadical/z3 — those cannot link into a wasm module.
+caelum-kernel = { path = "../caelum-kernel", default-features = false, features = [
+    "bmc-varisat",
+    "bmc-smtlib",
+] }
+wasm-bindgen = "0.2"
+serde_json.workspace = true

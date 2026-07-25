@@ -2,3 +2,6 @@
 /ci/target/
 docs/sphinx/build/
 docs/sphinx/.venv/
+
+# wasm-pack build output
+/caelum-wasm/pkg/

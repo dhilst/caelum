@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use pest::iterators::Pair;
 use pest::Parser;
@@ -18,7 +18,7 @@ pub fn parse_source(source: &str) -> Result<SourceFile> {
 
 pub fn parse_source_file(path: &Path, source: &str) -> Result<SourceFile> {
     let mut pairs = CaelumParser::parse(Rule::file, source).map_err(|err| CaelumError::Parse {
-        path: path.to_path_buf(),
+        path: path.display().to_string(),
         message: err.to_string(),
     })?;
 
@@ -47,7 +47,7 @@ fn parse_file(path: &Path, pair: Pair<'_, Rule>) -> Result<SourceFile> {
             Rule::EOI => {}
             rule => {
                 return Err(CaelumError::Parse {
-                    path: PathBuf::from(path),
+                    path: path.display().to_string(),
                     message: format!("unexpected top-level rule: {rule:?}"),
                 });
             }
@@ -199,7 +199,7 @@ fn parse_domain(pair: Pair<'_, Rule>) -> Result<Domain> {
             Ok(Domain::Named(name))
         }
         rule => Err(CaelumError::Parse {
-            path: PathBuf::from("<memory>"),
+            path: "<memory>".to_string(),
             message: format!("unexpected domain rule: {rule:?}"),
         }),
     }
@@ -210,7 +210,7 @@ fn parse_domain_bound(pair: Pair<'_, Rule>) -> Result<DomainBound> {
         Rule::int_lit => Ok(DomainBound::Int(parse_i64(pair)?)),
         Rule::ident => Ok(DomainBound::Name(pair.as_str().to_owned())),
         rule => Err(CaelumError::Parse {
-            path: PathBuf::from("<memory>"),
+            path: "<memory>".to_string(),
             message: format!("unexpected range bound rule: {rule:?}"),
         }),
     }
@@ -243,7 +243,7 @@ fn parse_expr_pair(pair: Pair<'_, Rule>) -> Result<Expr> {
             Ok(Expr::PrimedName(name))
         }
         rule => Err(CaelumError::Parse {
-            path: PathBuf::from("<memory>"),
+            path: "<memory>".to_string(),
             message: format!("unexpected expression rule: {rule:?}"),
         }),
     }
@@ -371,7 +371,7 @@ fn binary_op_from_pair(pair: Pair<'_, Rule>) -> BinaryOp {
 
 fn parse_i64(pair: Pair<'_, Rule>) -> Result<i64> {
     pair.as_str().parse::<i64>().map_err(|err| CaelumError::Parse {
-        path: PathBuf::from("<memory>"),
+        path: "<memory>".to_string(),
         message: format!("invalid integer literal `{}`: {err}", pair.as_str()),
     })
 }
@@ -387,7 +387,7 @@ fn unescape_string(path: &Path, raw: &str) -> Result<String> {
         }
 
         let escaped = chars.next().ok_or_else(|| CaelumError::Parse {
-            path: path.to_path_buf(),
+            path: path.display().to_string(),
             message: "unterminated string escape".to_owned(),
         })?;
 
@@ -399,7 +399,7 @@ fn unescape_string(path: &Path, raw: &str) -> Result<String> {
             't' => out.push('\t'),
             other => {
                 return Err(CaelumError::Parse {
-                    path: path.to_path_buf(),
+                    path: path.display().to_string(),
                     message: format!("unsupported string escape: \\{other}"),
                 });
             }

@@ -1,0 +1,28 @@
+[package]
+name = "caelum-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Command-line interface for the Caelum LTL model checker"
+
+[[bin]]
+name = "caelum"
+path = "src/main.rs"
+
+[dependencies]
+caelum-kernel = { path = "../caelum-kernel", default-features = false }
+clap.workspace = true
+serde_json.workspace = true
+
+[features]
+default = ["bmc-varisat", "bmc-z3"]
+# Backend features forward to the kernel so the CLI's own `#[cfg(feature=...)]`
+# gates line up with which SolverBackend variants exist in the kernel.
+bmc-varisat = ["caelum-kernel/bmc-varisat"]
+bmc-cadical = ["caelum-kernel/bmc-cadical"]
+bmc-z3 = ["caelum-kernel/bmc-z3"]
+# Optional native SMT-LIB2 path that shells out to the `z3` binary.
+smtlib = ["caelum-kernel/bmc-smtlib"]
+
+[dev-dependencies]
+tempfile = "3"

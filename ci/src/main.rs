@@ -105,7 +105,7 @@ fn main() -> ExitCode {
 
     println!("harness: building project...");
     let build = Command::new("cargo")
-        .args(["build", "--quiet"])
+        .args(["build", "--quiet", "-p", "caelum-cli"])
         .status();
     match build {
         Ok(s) if s.success() => {}
@@ -141,8 +141,11 @@ fn main() -> ExitCode {
         let tx = tx.clone();
         pool.execute(move || {
             let name = path.display().to_string();
-            let outcome =
-                run_with_timeout("cargo", &["run", "--quiet", "--", &name], timeout);
+            let outcome = run_with_timeout(
+                "cargo",
+                &["run", "--quiet", "-p", "caelum-cli", "--", &name],
+                timeout,
+            );
             let _ = tx.send(JobResult { name, outcome });
         });
     }
