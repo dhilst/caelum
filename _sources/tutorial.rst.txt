@@ -1,8 +1,46 @@
-Tutorial
-========
+Tutorial: A Traffic-Light Controller
+====================================
 
-This tutorial walks through building a crossroad traffic light controller
-step by step, introducing each language feature as it becomes needed.
+This tutorial builds a working specification from scratch, introducing each
+language feature as it becomes needed. It assumes you can program but have never
+used LTL or formal logic — every symbol is introduced with a JavaScript analogy.
+
+You can do the whole tutorial **in your browser**: each specification below is a
+live editor (see :doc:`using-the-editor`). Press **Check ▶** or ``Ctrl-Enter`` to
+run it. Nothing needs to be installed until you want to run specs from the command
+line (:doc:`cli-reference`).
+
+What we'll build, and why
+-------------------------
+
+We are going to specify a **crossroad traffic-light controller**: two lights
+facing perpendicular directions of an intersection, cycling through red, green,
+and yellow. It is a small example, but it is a genuinely good one for model
+checking, because a traffic light has real correctness requirements that are easy
+to state and disastrous to get wrong:
+
+- A **safety** requirement: the two lights must **never both be green** at the same
+  time. If that rule is ever broken, cars collide. Safety properties are the "this
+  bad thing never happens" rules from :doc:`when-to-use`.
+- A **liveness** requirement: each direction must **keep getting a green light** —
+  neither side may be starved forever. Liveness properties are the "this good
+  thing keeps happening" rules.
+
+Here is the mental model to carry through the tutorial:
+
+- The **system is a state machine.** The lights and a countdown timer are its
+  *state*; the rules for switching colours are its *transitions*.
+- The **requirements are properties.** We write down mutual exclusion and fairness
+  as temporal-logic properties, and Caelum checks them against *every* way the
+  lights can ever cycle — not just the runs we happened to imagine.
+
+The intersection is small enough to explore exhaustively, concrete enough to
+picture, and its safety rule is one everybody already understands. That makes it an
+ideal first model. Let's start with the notation, then build the machine one piece
+at a time.
+
+Notation Primer
+---------------
 
 Before we start writing specifications, let's get familiar with the symbols
 Caelum uses. If you've never worked with formal logic notation, this section

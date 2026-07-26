@@ -3,10 +3,10 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Full Specification" href="specification.html"><link rel="prev" title="Command-Line Usage" href="cli-reference.html">
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Tutorial: A Traffic-Light Controller" href="tutorial.html"><link rel="prev" title="What Caelum Is For" href="when-to-use.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>Playground - Caelum</title>
+        <title>Trying Caelum in Your Browser - Caelum</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -172,7 +172,7 @@
           <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
         </button>
       </div>
-      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
         <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
       </label>
     </div>
@@ -191,17 +191,17 @@
 </form>
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <p class="caption" role="heading"><span class="caption-text">Learn Caelum</span></p>
-<ul>
+<ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="when-to-use.html">What Caelum Is For</a></li>
-<li class="toctree-l1"><a class="reference internal" href="using-the-editor.html">Trying Caelum in Your Browser</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Trying Caelum in Your Browser</a></li>
 <li class="toctree-l1"><a class="reference internal" href="tutorial.html">Tutorial: A Traffic-Light Controller</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
-<ul class="current">
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="language-guide.html">Language Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 <li class="toctree-l1"><a class="reference internal" href="cli-reference.html">Command-Line Usage</a></li>
-<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Playground</a></li>
+<li class="toctree-l1"><a class="reference internal" href="playground.html">Playground</a></li>
 <li class="toctree-l1"><a class="reference internal" href="specification.html">Full Specification</a></li>
 </ul>
 
@@ -223,7 +223,7 @@
         </a>
         <div class="content-icon-container">
           <div class="view-this-page">
-  <a class="muted-link" href="_sources/playground.rst.txt" title="View this page">
+  <a class="muted-link" href="_sources/using-the-editor.rst.txt" title="View this page">
     <svg><use href="#svg-eye"></use></svg>
     <span class="visually-hidden">View this page</span>
   </a>
@@ -236,52 +236,102 @@
               <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
             </button>
           </div>
-          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
             <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
           </label>
         </div>
         <article role="main" id="furo-main-content">
-          <section id="playground">
-<h1>Playground<a class="headerlink" href="#playground" title="Link to this heading">¶</a></h1>
-<p>A full-page editor for experimenting with Caelum. Unlike the inline editors
-scattered through these docs (see <a class="reference internal" href="using-the-editor.html"><span class="doc">Trying Caelum in Your Browser</span></a>), this is a blank
-scratchpad with room to work and the ability to load and share specifications by
-URL. It is seeded with a small modular counter. Edit anything and press
-<strong>Check ▶</strong> (or <code class="docutils literal notranslate"><span class="pre">Ctrl-Enter</span></code>) to re-run the model checker.</p>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
+          <section id="trying-caelum-in-your-browser">
+<h1>Trying Caelum in Your Browser<a class="headerlink" href="#trying-caelum-in-your-browser" title="Link to this heading">¶</a></h1>
+<p>You do not have to install anything to use Caelum. The whole model checker is
+compiled to WebAssembly and runs inside this documentation. Every <code class="docutils literal notranslate"><span class="pre">.lum</span></code> example
+you see is a <strong>live editor</strong>, and the entire <a class="reference internal" href="tutorial.html"><span class="doc">Tutorial: A Traffic-Light Controller</span></a> can be completed
+without leaving your browser.</p>
+<section id="every-example-is-editable-and-runnable">
+<h2>Every example is editable and runnable<a class="headerlink" href="#every-example-is-editable-and-runnable" title="Link to this heading">¶</a></h2>
+<p>Wherever these docs show a <code class="docutils literal notranslate"><span class="pre">.lum</span></code> specification, that grey block is a real code
+editor, not a static snippet. You can:</p>
+<ul class="simple">
+<li><p><strong>Edit it in place</strong> — change a value, break a rule, add a property.</p></li>
+<li><p><strong>Run it</strong> — press the <strong>Check ▶</strong> button or <code class="docutils literal notranslate"><span class="pre">Ctrl-Enter</span></code> (<code class="docutils literal notranslate"><span class="pre">Cmd-Enter</span></code> on a
+Mac).</p></li>
+</ul>
+<p>A block gets a <strong>Check ▶</strong> button when it contains at least one <code class="docutils literal notranslate"><span class="pre">property</span></code> (or
+<code class="docutils literal notranslate"><span class="pre">invalid</span></code>) to verify. Smaller fragments that only show a type or a transition
+are still editable and syntax-highlighted, but there is nothing to check, so they
+have no button.</p>
+<p>Try it now — press <strong>Check ▶</strong>:</p>
+<div class="highlight-lum notranslate"><div class="highlight"><pre><span></span><span class="k">let</span> <span class="n">x</span> <span class="o">∈</span> <span class="m">0</span><span class="o">..</span><span class="m">2</span>
+
+<span class="k">init</span> <span class="p">{</span> <span class="n">x</span> <span class="o">=</span> <span class="m">0</span> <span class="p">}</span>
+
+<span class="k">transition</span> <span class="n">step</span> <span class="p">{</span> <span class="n">x&#39;</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="m">1</span><span class="p">)</span> <span class="ow">mod</span> <span class="m">3</span> <span class="p">}</span>
+
+<span class="k">property</span> <span class="n">stays_small</span> <span class="p">{</span> <span class="o">□</span> <span class="p">(</span><span class="n">x</span> <span class="o">≤</span> <span class="m">2</span><span class="p">)</span> <span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="everything-runs-locally">
+<h2>Everything runs locally<a class="headerlink" href="#everything-runs-locally" title="Link to this heading">¶</a></h2>
 <p>The checker is <a class="reference external" href="https://github.com/dhilst/caelum">caelum-kernel</a> compiled to
-WebAssembly, using the pure-Rust <em>varisat</em> backend. Your spec never leaves the
-page — everything runs locally in your browser.</p>
+WebAssembly, using the pure-Rust <em>varisat</em> backend. Your specification is checked
+<strong>entirely in your browser</strong> — it never leaves the page, there is no server, and
+no account is required. Close the tab and it is gone.</p>
+</section>
+<section id="reading-the-results">
+<h2>Reading the results<a class="headerlink" href="#reading-the-results" title="Link to this heading">¶</a></h2>
+<p>When you run a spec, a results pane appears beneath the editor.</p>
+<p><strong>Passing.</strong> Each property is listed with a pass marker. A pass means Caelum
+explored every reachable state and found no way to violate the property.</p>
+<p><strong>Failing — the counterexample trace.</strong> When a property <em>can</em> be broken, Caelum
+shows a <strong>counterexample</strong>: a table with one row per state, the variable values in
+each, and the transition taken between rows. It is a concrete, replayable story of
+how the property fails. For a liveness (<code class="docutils literal notranslate"><span class="pre">□</span> <span class="pre">◇</span></code>) property the trace ends in a
+loop, and a <code class="docutils literal notranslate"><span class="pre">⟲</span></code> marker shows the state the loop returns to — the system cycles
+there forever without the good thing ever happening.</p>
+<p>Try this one. The property claims <code class="docutils literal notranslate"><span class="pre">x</span></code> is never <code class="docutils literal notranslate"><span class="pre">2</span></code>, but the counter reaches
+<code class="docutils literal notranslate"><span class="pre">2</span></code> on the third step, so it fails — press <strong>Check ▶</strong> and read the trace:</p>
+<div class="highlight-lum notranslate"><div class="highlight"><pre><span></span><span class="k">let</span> <span class="n">x</span> <span class="o">∈</span> <span class="m">0</span><span class="o">..</span><span class="m">2</span>
+
+<span class="k">init</span> <span class="p">{</span> <span class="n">x</span> <span class="o">=</span> <span class="m">0</span> <span class="p">}</span>
+
+<span class="k">transition</span> <span class="n">step</span> <span class="p">{</span> <span class="n">x&#39;</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="m">1</span><span class="p">)</span> <span class="ow">mod</span> <span class="m">3</span> <span class="p">}</span>
+
+<span class="k">property</span> <span class="n">never_two</span> <span class="p">{</span> <span class="o">□</span> <span class="p">(</span><span class="n">x</span> <span class="o">≠</span> <span class="m">2</span><span class="p">)</span> <span class="p">}</span>
+</pre></div>
 </div>
-<style>
-.caelum-load-bar { display: flex; gap: .5rem; margin: 1rem 0 .3rem; }
-.caelum-load-bar input { flex: 1; font: inherit; font-size: 13px; padding: .3rem .5rem;
-  border: 1px solid rgba(128,128,128,0.4); border-radius: 5px; }
-.caelum-load-bar button { font: inherit; font-size: 13px; cursor: pointer; padding: .3rem .8rem;
-  border-radius: 5px; border: 1px solid rgba(128,128,128,0.4); background: #4078f2; color: #fff; }
-</style>
-<div class="caelum-load-bar">
-  <input id="caelum-load-url" type="text"
-         placeholder="Load a .lum from a URL — a staged example or a raw.githubusercontent.com link" />
-  <button id="caelum-load-btn" type="button">Load</button>
+<p><strong>Errors — inline underlines.</strong> If a spec does not parse or has a type error,
+Caelum underlines the exact spot and explains the problem, the same way an editor
+flags a syntax error. Try deleting the closing brace <code class="docutils literal notranslate"><span class="pre">}</span></code> from the property above
+and running it again.</p>
+</section>
+<section id="the-invalid-keyword">
+<h2>The <code class="docutils literal notranslate"><span class="pre">invalid</span></code> keyword<a class="headerlink" href="#the-invalid-keyword" title="Link to this heading">¶</a></h2>
+<p>Sometimes you <em>want</em> to confirm that a property does <strong>not</strong> hold — for example, to
+show a bad state is unreachable. Marking a block <code class="docutils literal notranslate"><span class="pre">invalid</span></code> flips the reporting:
+Caelum reports a <strong>pass</strong> when the property fails as expected, and a <strong>fail</strong> if it
+unexpectedly holds.</p>
+<div class="highlight-lum notranslate"><div class="highlight"><pre><span></span><span class="k">let</span> <span class="n">x</span> <span class="o">∈</span> <span class="m">0</span><span class="o">..</span><span class="m">2</span>
+
+<span class="k">init</span> <span class="p">{</span> <span class="n">x</span> <span class="o">=</span> <span class="m">0</span> <span class="p">}</span>
+
+<span class="k">transition</span> <span class="n">step</span> <span class="p">{</span> <span class="n">x&#39;</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="m">1</span><span class="p">)</span> <span class="ow">mod</span> <span class="m">3</span> <span class="p">}</span>
+
+<span class="k">invalid</span> <span class="n">never_reaches_two</span> <span class="p">{</span> <span class="o">□</span> <span class="p">(</span><span class="n">x</span> <span class="o">≠</span> <span class="m">2</span><span class="p">)</span> <span class="p">}</span>
+</pre></div>
 </div>
-<div id="caelum-playground" data-seed-url="_static/examples/counter.lum"></div><div class="admonition note">
-<p class="admonition-title">Note</p>
-<p><strong>Load and share specs by URL.</strong> Paste any URL into the box above and press
-<strong>Load</strong> to open that <code class="docutils literal notranslate"><span class="pre">.lum</span></code> file — a staged example such as
-<code class="docutils literal notranslate"><span class="pre">_static/examples/traffic_light.lum</span></code>, or an absolute link like a raw GitHub
-file. The address updates to <code class="docutils literal notranslate"><span class="pre">playground.html?q=&lt;url&gt;</span></code>, so <em>that link is
-itself shareable</em>: send it to anyone and the playground loads the spec
-automatically. (Cross-origin hosts must allow it via CORS; raw GitHub does.)</p>
-</div>
-<div class="admonition tip">
-<p class="admonition-title">Tip</p>
-<p>When a property fails, the results pane shows a <strong>counterexample trace</strong> — one
-row per state, with the transition taken between states and, for a liveness
-(<code class="docutils literal notranslate"><span class="pre">□</span> <span class="pre">◇</span></code>) property, a <code class="docutils literal notranslate"><span class="pre">⟲</span></code> marker on the state the infinite loop returns to.
-A parse or type error is underlined inline at the offending location.</p>
-</div>
+<p>Here <code class="docutils literal notranslate"><span class="pre">x</span></code> <em>does</em> reach <code class="docutils literal notranslate"><span class="pre">2</span></code>, so the property is genuinely false — which is
+exactly what <code class="docutils literal notranslate"><span class="pre">invalid</span></code> asserts, so this reports a pass.</p>
+</section>
+<section id="where-to-go-next">
+<h2>Where to go next<a class="headerlink" href="#where-to-go-next" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>The <a class="reference internal" href="tutorial.html"><span class="doc">Tutorial: A Traffic-Light Controller</span></a> builds a complete traffic-light controller step by step,
+right in these editors.</p></li>
+<li><p>The <a class="reference internal" href="playground.html"><span class="doc">Playground</span></a> is a full-page blank editor for your own experiments, with
+the ability to load and share specifications by URL.</p></li>
+</ul>
+</section>
 </section>
 
         </article>
@@ -289,23 +339,23 @@ A parse or type error is underlined inline at the offending location.</p>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="specification.html">
+          <a class="next-page" href="tutorial.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Full Specification</div>
+                <div class="title">Tutorial: A Traffic-Light Controller</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="cli-reference.html">
+          <a class="prev-page" href="when-to-use.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Command-Line Usage</div>
+                <div class="title">What Caelum Is For</div>
                 
               </div>
             </a>
@@ -327,8 +377,31 @@ A parse or type error is underlined inline at the offending location.</p>
         
       </footer>
     </div>
-    <aside class="toc-drawer no-toc">
+    <aside class="toc-drawer">
       
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">Trying Caelum in Your Browser</a><ul>
+<li><a class="reference internal" href="#every-example-is-editable-and-runnable">Every example is editable and runnable</a></li>
+<li><a class="reference internal" href="#everything-runs-locally">Everything runs locally</a></li>
+<li><a class="reference internal" href="#reading-the-results">Reading the results</a></li>
+<li><a class="reference internal" href="#the-invalid-keyword">The <code class="docutils literal notranslate"><span class="pre">invalid</span></code> keyword</a></li>
+<li><a class="reference internal" href="#where-to-go-next">Where to go next</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
       
       
     </aside>

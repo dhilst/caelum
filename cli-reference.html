@@ -3,10 +3,10 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Examples" href="examples.html"><link rel="prev" title="Language Guide" href="language-guide.html">
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Playground" href="playground.html"><link rel="prev" title="Examples" href="examples.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>CLI Reference - Caelum</title>
+        <title>Command-Line Usage - Caelum</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -190,12 +190,17 @@
   <input type="hidden" name="area" value="default">
 </form>
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
-  <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="getting-started.html">Getting Started</a></li>
-<li class="toctree-l1"><a class="reference internal" href="tutorial.html">Tutorial</a></li>
+  <p class="caption" role="heading"><span class="caption-text">Learn Caelum</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="when-to-use.html">What Caelum Is For</a></li>
+<li class="toctree-l1"><a class="reference internal" href="using-the-editor.html">Trying Caelum in Your Browser</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tutorial.html">Tutorial: A Traffic-Light Controller</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="language-guide.html">Language Guide</a></li>
-<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">CLI Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Command-Line Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="playground.html">Playground</a></li>
 <li class="toctree-l1"><a class="reference internal" href="specification.html">Full Specification</a></li>
 </ul>
@@ -236,8 +241,78 @@
           </label>
         </div>
         <article role="main" id="furo-main-content">
-          <section id="cli-reference">
-<h1>CLI Reference<a class="headerlink" href="#cli-reference" title="Link to this heading">¶</a></h1>
+          <section id="command-line-usage">
+<h1>Command-Line Usage<a class="headerlink" href="#command-line-usage" title="Link to this heading">¶</a></h1>
+<p>Everything in the <a class="reference internal" href="tutorial.html"><span class="doc">Tutorial: A Traffic-Light Controller</span></a> runs in your browser, but installing the
+<code class="docutils literal notranslate"><span class="pre">caelum</span></code> binary lets you check specifications offline, script them, and wire
+them into CI.</p>
+<section id="installation">
+<h2>Installation<a class="headerlink" href="#installation" title="Link to this heading">¶</a></h2>
+<p>Prerequisite: the <a class="reference external" href="https://rustup.rs/">Rust toolchain</a> (edition 2021 or later).</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/dhilst/caelum.git
+<span class="nb">cd</span><span class="w"> </span>caelum
+cargo<span class="w"> </span>build<span class="w"> </span>--release
+</pre></div>
+</div>
+<p>The binary is at <code class="docutils literal notranslate"><span class="pre">target/release/caelum</span></code>.</p>
+</section>
+<section id="your-first-check">
+<h2>Your first check<a class="headerlink" href="#your-first-check" title="Link to this heading">¶</a></h2>
+<p>Create a file called <code class="docutils literal notranslate"><span class="pre">counter.lum</span></code>:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>module examples.counter
+
+const max = 3
+
+let x ∈ 0..max
+
+init {
+  x = 0
+}
+
+transition step {
+  x&#39; = (x + 1) mod (max + 1)
+}
+
+property in_range {
+  □ (x &gt;= 0 ∧ x &lt;= max)
+}
+
+property returns_to_zero {
+  □ ◇ (x = 0)
+}
+</pre></div>
+</div>
+<p>Run it:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>caelum<span class="w"> </span>counter.lum
+</pre></div>
+</div>
+<p>Both properties pass. The counter wraps around from <code class="docutils literal notranslate"><span class="pre">max</span></code> back to 0, so it
+always returns to zero and always stays in range.</p>
+</section>
+<section id="reading-the-output">
+<h2>Reading the output<a class="headerlink" href="#reading-the-output" title="Link to this heading">¶</a></h2>
+<p>On success, Caelum prints a summary line and one line per property, and exits with
+code 0:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>OK loaded 1 file(s), typechecked 5 item(s), built 4 reachable state(s) and 4 transition edge(s)
+PASS property in_range
+PASS property returns_to_zero
+</pre></div>
+</div>
+<p>On failure, the summary line starts with <code class="docutils literal notranslate"><span class="pre">FAIL</span></code>, each broken property is listed,
+and the process exits with code 1. Add <code class="docutils literal notranslate"><span class="pre">--show-trace</span></code> to print the
+counterexample for each failing property:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>FAIL property never_two
+counterexample:
+  s0: x = 0
+       --(step)--&gt;
+  s1: x = 1
+       --(step)--&gt;
+  s2: x = 2
+</pre></div>
+</div>
+<p>Each <code class="docutils literal notranslate"><span class="pre">--(name)--&gt;</span></code> arrow names the transition that fired between two states. For
+a liveness property the trace ends in a loop, marked <code class="docutils literal notranslate"><span class="pre">cycle</span> <span class="pre">starts</span> <span class="pre">at</span> <span class="pre">sN</span></code>.</p>
+</section>
 <section id="usage">
 <h2>Usage<a class="headerlink" href="#usage" title="Link to this heading">¶</a></h2>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>caelum [OPTIONS] [SPEC]
@@ -372,23 +447,23 @@ matching Cargo feature to be compiled in; <code class="docutils literal notransl
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="examples.html">
+          <a class="next-page" href="playground.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Examples</div>
+                <div class="title">Playground</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="language-guide.html">
+          <a class="prev-page" href="examples.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Language Guide</div>
+                <div class="title">Examples</div>
                 
               </div>
             </a>
@@ -422,7 +497,10 @@ matching Cargo feature to be compiled in; <code class="docutils literal notransl
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">CLI Reference</a><ul>
+<li><a class="reference internal" href="#">Command-Line Usage</a><ul>
+<li><a class="reference internal" href="#installation">Installation</a></li>
+<li><a class="reference internal" href="#your-first-check">Your first check</a></li>
+<li><a class="reference internal" href="#reading-the-output">Reading the output</a></li>
 <li><a class="reference internal" href="#usage">Usage</a></li>
 <li><a class="reference internal" href="#commands">Commands</a><ul>
 <li><a class="reference internal" href="#check">check</a></li>

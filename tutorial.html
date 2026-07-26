@@ -3,10 +3,10 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Language Guide" href="language-guide.html"><link rel="prev" title="Getting Started" href="getting-started.html">
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Language Guide" href="language-guide.html"><link rel="prev" title="Trying Caelum in Your Browser" href="using-the-editor.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>Tutorial - Caelum</title>
+        <title>Tutorial: A Traffic-Light Controller - Caelum</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -190,12 +190,17 @@
   <input type="hidden" name="area" value="default">
 </form>
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
-  <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="getting-started.html">Getting Started</a></li>
-<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Tutorial</a></li>
+  <p class="caption" role="heading"><span class="caption-text">Learn Caelum</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="when-to-use.html">What Caelum Is For</a></li>
+<li class="toctree-l1"><a class="reference internal" href="using-the-editor.html">Trying Caelum in Your Browser</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Tutorial: A Traffic-Light Controller</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="language-guide.html">Language Guide</a></li>
-<li class="toctree-l1"><a class="reference internal" href="cli-reference.html">CLI Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli-reference.html">Command-Line Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="playground.html">Playground</a></li>
 <li class="toctree-l1"><a class="reference internal" href="specification.html">Full Specification</a></li>
 </ul>
@@ -236,15 +241,51 @@
           </label>
         </div>
         <article role="main" id="furo-main-content">
-          <section id="tutorial">
-<h1>Tutorial<a class="headerlink" href="#tutorial" title="Link to this heading">¶</a></h1>
-<p>This tutorial walks through building a crossroad traffic light controller
-step by step, introducing each language feature as it becomes needed.</p>
+          <section id="tutorial-a-traffic-light-controller">
+<h1>Tutorial: A Traffic-Light Controller<a class="headerlink" href="#tutorial-a-traffic-light-controller" title="Link to this heading">¶</a></h1>
+<p>This tutorial builds a working specification from scratch, introducing each
+language feature as it becomes needed. It assumes you can program but have never
+used LTL or formal logic — every symbol is introduced with a JavaScript analogy.</p>
+<p>You can do the whole tutorial <strong>in your browser</strong>: each specification below is a
+live editor (see <a class="reference internal" href="using-the-editor.html"><span class="doc">Trying Caelum in Your Browser</span></a>). Press <strong>Check ▶</strong> or <code class="docutils literal notranslate"><span class="pre">Ctrl-Enter</span></code> to
+run it. Nothing needs to be installed until you want to run specs from the command
+line (<a class="reference internal" href="cli-reference.html"><span class="doc">Command-Line Usage</span></a>).</p>
+<section id="what-we-ll-build-and-why">
+<h2>What we’ll build, and why<a class="headerlink" href="#what-we-ll-build-and-why" title="Link to this heading">¶</a></h2>
+<p>We are going to specify a <strong>crossroad traffic-light controller</strong>: two lights
+facing perpendicular directions of an intersection, cycling through red, green,
+and yellow. It is a small example, but it is a genuinely good one for model
+checking, because a traffic light has real correctness requirements that are easy
+to state and disastrous to get wrong:</p>
+<ul class="simple">
+<li><p>A <strong>safety</strong> requirement: the two lights must <strong>never both be green</strong> at the same
+time. If that rule is ever broken, cars collide. Safety properties are the “this
+bad thing never happens” rules from <a class="reference internal" href="when-to-use.html"><span class="doc">What Caelum Is For</span></a>.</p></li>
+<li><p>A <strong>liveness</strong> requirement: each direction must <strong>keep getting a green light</strong> —
+neither side may be starved forever. Liveness properties are the “this good
+thing keeps happening” rules.</p></li>
+</ul>
+<p>Here is the mental model to carry through the tutorial:</p>
+<ul class="simple">
+<li><p>The <strong>system is a state machine.</strong> The lights and a countdown timer are its
+<em>state</em>; the rules for switching colours are its <em>transitions</em>.</p></li>
+<li><p>The <strong>requirements are properties.</strong> We write down mutual exclusion and fairness
+as temporal-logic properties, and Caelum checks them against <em>every</em> way the
+lights can ever cycle — not just the runs we happened to imagine.</p></li>
+</ul>
+<p>The intersection is small enough to explore exhaustively, concrete enough to
+picture, and its safety rule is one everybody already understands. That makes it an
+ideal first model. Let’s start with the notation, then build the machine one piece
+at a time.</p>
+</section>
+<section id="notation-primer">
+<h2>Notation Primer<a class="headerlink" href="#notation-primer" title="Link to this heading">¶</a></h2>
 <p>Before we start writing specifications, let’s get familiar with the symbols
 Caelum uses. If you’ve never worked with formal logic notation, this section
 will get you up to speed.</p>
-<section id="notation-primer">
-<h2>Notation Primer<a class="headerlink" href="#notation-primer" title="Link to this heading">¶</a></h2>
+</section>
+<section id="id1">
+<h2>Notation Primer<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h2>
 <p>Caelum specifications use symbols from logic and set theory. Every symbol
 has an ASCII alternative you can type on a regular keyboard — you never need
 to type Unicode by hand.</p>
@@ -702,14 +743,14 @@ available at <code class="docutils literal notranslate"><span class="pre">exampl
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="getting-started.html">
+          <a class="prev-page" href="using-the-editor.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Getting Started</div>
+                <div class="title">Trying Caelum in Your Browser</div>
                 
               </div>
             </a>
@@ -743,8 +784,10 @@ available at <code class="docutils literal notranslate"><span class="pre">exampl
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">Tutorial</a><ul>
-<li><a class="reference internal" href="#notation-primer">Notation Primer</a><ul>
+<li><a class="reference internal" href="#">Tutorial: A Traffic-Light Controller</a><ul>
+<li><a class="reference internal" href="#what-we-ll-build-and-why">What we’ll build, and why</a></li>
+<li><a class="reference internal" href="#notation-primer">Notation Primer</a></li>
+<li><a class="reference internal" href="#id1">Notation Primer</a><ul>
 <li><a class="reference internal" href="#logical-connectives">Logical Connectives</a></li>
 <li><a class="reference internal" href="#set-membership">Set Membership</a></li>
 <li><a class="reference internal" href="#temporal-operators">Temporal Operators</a></li>

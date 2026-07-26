@@ -3,10 +3,10 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Tutorial" href="tutorial.html"><link rel="prev" title="Caelum" href="index.html">
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Trying Caelum in Your Browser" href="using-the-editor.html"><link rel="prev" title="Caelum" href="index.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>Getting Started - Caelum</title>
+        <title>What Caelum Is For - Caelum</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -190,12 +190,17 @@
   <input type="hidden" name="area" value="default">
 </form>
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
-  <ul class="current">
-<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Getting Started</a></li>
-<li class="toctree-l1"><a class="reference internal" href="tutorial.html">Tutorial</a></li>
+  <p class="caption" role="heading"><span class="caption-text">Learn Caelum</span></p>
+<ul class="current">
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">What Caelum Is For</a></li>
+<li class="toctree-l1"><a class="reference internal" href="using-the-editor.html">Trying Caelum in Your Browser</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tutorial.html">Tutorial: A Traffic-Light Controller</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="language-guide.html">Language Guide</a></li>
-<li class="toctree-l1"><a class="reference internal" href="cli-reference.html">CLI Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli-reference.html">Command-Line Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="playground.html">Playground</a></li>
 <li class="toctree-l1"><a class="reference internal" href="specification.html">Full Specification</a></li>
 </ul>
@@ -218,7 +223,7 @@
         </a>
         <div class="content-icon-container">
           <div class="view-this-page">
-  <a class="muted-link" href="_sources/getting-started.rst.txt" title="View this page">
+  <a class="muted-link" href="_sources/when-to-use.rst.txt" title="View this page">
     <svg><use href="#svg-eye"></use></svg>
     <span class="visually-hidden">View this page</span>
   </a>
@@ -236,74 +241,103 @@
           </label>
         </div>
         <article role="main" id="furo-main-content">
-          <section id="getting-started">
-<h1>Getting Started<a class="headerlink" href="#getting-started" title="Link to this heading">¶</a></h1>
-<section id="prerequisites">
-<h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading">¶</a></h2>
+          <section id="what-caelum-is-for">
+<h1>What Caelum Is For<a class="headerlink" href="#what-caelum-is-for" title="Link to this heading">¶</a></h1>
+<p>Before writing any specification, it helps to understand <em>what kind of problem</em>
+Caelum solves — and when reaching for a model checker pays off. This page assumes
+you can program but have never used formal logic or model checking. No syntax to
+memorise yet; that comes in the <a class="reference internal" href="tutorial.html"><span class="doc">Tutorial: A Traffic-Light Controller</span></a>.</p>
+<section id="the-kind-of-specification">
+<h2>The kind of specification<a class="headerlink" href="#the-kind-of-specification" title="Link to this heading">¶</a></h2>
+<p>Caelum works with two ingredients.</p>
+<p><strong>A model of a system as a state machine.</strong> You pick a handful of <em>variables</em> that
+capture the system’s state (a mode, a counter, whose turn it is) and you write
+<em>transitions</em> — the rules for how those variables can change from one step to the
+next. Together they define every state the system can be in and every way it can
+move between states. This is the same mental model as a state diagram you might
+sketch on a whiteboard, written down precisely.</p>
+<p><strong>Requirements as temporal properties.</strong> Once the machine is described, you state
+what must be true about it <em>over time</em>. These properties come in two flavours:</p>
 <ul class="simple">
-<li><p><a class="reference external" href="https://rustup.rs/">Rust toolchain</a> (edition 2021 or later)</p></li>
+<li><p><strong>Safety</strong> — <em>“something bad never happens.”</em> A safety property is a rule that
+must hold in every reachable state: two processes are never in the critical
+section at once; a booked seat is never double-sold; the buffer never overflows.</p></li>
+<li><p><strong>Liveness</strong> — <em>“something good eventually happens.”</em> A liveness property is a
+promise that the system keeps making progress: a request is always eventually
+served; every process eventually gets a turn; the system never permanently
+freezes.</p></li>
+</ul>
+<p>“Temporal” just means these statements talk about <em>sequences of states</em> — the
+future, the next step, forever — not a single snapshot. That is what Linear
+Temporal Logic (LTL) gives you, and it is what makes a model checker different
+from an ordinary assertion.</p>
+</section>
+<section id="why-not-just-write-tests">
+<h2>Why not just write tests?<a class="headerlink" href="#why-not-just-write-tests" title="Link to this heading">¶</a></h2>
+<p>A unit test runs your system on <em>one</em> scenario and checks the outcome. That is
+great for catching the bugs you anticipated — but the nastiest bugs in stateful,
+concurrent, or event-driven systems come from the ordering you <em>didn’t</em> think of:
+the one interleaving out of thousands where two things happen in just the wrong
+order.</p>
+<p>Caelum is <strong>exhaustive</strong>. It explores <em>every</em> reachable state and <em>every</em> possible
+ordering of transitions, then checks your properties against all of them. If a
+counterexample exists — even a fifteen-step sequence you would never have written
+by hand — it finds it and shows it to you. If none exists, you have a proof that
+the property holds for the whole model, not just for the cases you tried.</p>
+</section>
+<section id="where-it-shines">
+<h2>Where it shines<a class="headerlink" href="#where-it-shines" title="Link to this heading">¶</a></h2>
+<p>Model checking is a natural fit whenever correctness depends on <em>ordering, timing
+of events, or concurrency</em> rather than on crunching data:</p>
+<ul class="simple">
+<li><p><strong>Mutual exclusion and concurrency</strong> — locks, critical sections, race conditions.</p></li>
+<li><p><strong>Protocols and handshakes</strong> — connection setup/teardown, retry logic, message
+ordering.</p></li>
+<li><p><strong>Controllers</strong> — traffic lights, elevators, vending machines, any device driven
+by a state machine (the <a class="reference internal" href="tutorial.html"><span class="doc">Tutorial: A Traffic-Light Controller</span></a> builds exactly one of these).</p></li>
+<li><p><strong>Lifecycle and workflow logic</strong> — an order that must go
+<code class="docutils literal notranslate"><span class="pre">created</span> <span class="pre">→</span> <span class="pre">paid</span> <span class="pre">→</span> <span class="pre">shipped</span></code> and never skip a step or move backwards.</p></li>
+<li><p><strong>Distributed coordination</strong> — leader election, consensus, replication invariants.</p></li>
 </ul>
 </section>
-<section id="installation">
-<h2>Installation<a class="headerlink" href="#installation" title="Link to this heading">¶</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/dhilst/caelum.git
-<span class="nb">cd</span><span class="w"> </span>caelum
-cargo<span class="w"> </span>build<span class="w"> </span>--release
-</pre></div>
-</div>
-<p>The binary is at <code class="docutils literal notranslate"><span class="pre">target/release/caelum</span></code>.</p>
-</section>
-<section id="your-first-specification">
-<h2>Your First Specification<a class="headerlink" href="#your-first-specification" title="Link to this heading">¶</a></h2>
-<p>Create a file called <code class="docutils literal notranslate"><span class="pre">counter.lum</span></code>:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>module examples.counter
-
-const max = 3
-
-let x ∈ 0..max
-
-init {
-  x = 0
-}
-
-transition step {
-  x&#39; = (x + 1) mod (max + 1)
-}
-
-property in_range {
-  □ (x &gt;= 0 ∧ x &lt;= max)
-}
-
-property returns_to_zero {
-  □ ◇ (x = 0)
-}
-</pre></div>
-</div>
-<p>Run it:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>caelum<span class="w"> </span>counter.lum
-</pre></div>
-</div>
-<p>Both properties should pass. The counter wraps around from <code class="docutils literal notranslate"><span class="pre">max</span></code> back to 0,
-so it always returns to zero and always stays in range.</p>
-</section>
-<section id="understanding-output">
-<h2>Understanding Output<a class="headerlink" href="#understanding-output" title="Link to this heading">¶</a></h2>
-<p>On success, Caelum prints a summary and exits with code 0:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>checking counter.lum
-  in_range ........... PASS
-  returns_to_zero .... PASS
-</pre></div>
-</div>
-<p>On failure, Caelum shows which property failed and exits with code 1. Use
-<code class="docutils literal notranslate"><span class="pre">--show-trace</span></code> to see the counterexample trace.</p>
-</section>
-<section id="next-steps">
-<h2>Next Steps<a class="headerlink" href="#next-steps" title="Link to this heading">¶</a></h2>
+<section id="where-it-is-the-wrong-tool">
+<h2>Where it is the wrong tool<a class="headerlink" href="#where-it-is-the-wrong-tool" title="Link to this heading">¶</a></h2>
+<p>Caelum is not a universal verifier. Look elsewhere when:</p>
 <ul class="simple">
-<li><p>Read the <a class="reference internal" href="language-guide.html"><span class="doc">Language Guide</span></a> for the full syntax</p></li>
-<li><p>See more <a class="reference internal" href="examples.html"><span class="doc">Examples</span></a></p></li>
-<li><p>Check the <a class="reference internal" href="cli-reference.html"><span class="doc">CLI Reference</span></a> for all available options</p></li>
+<li><p>The state space is <strong>not finite</strong> or is simply <strong>too large</strong> — Caelum has to be
+able to enumerate reachable states, and it stops at <code class="docutils literal notranslate"><span class="pre">--max-states</span></code> (100,000 by
+default). Systems dominated by large arrays, unbounded collections, or wide
+integer arithmetic blow up quickly.</p></li>
+<li><p>The hard part is <strong>numerical</strong> — heavy arithmetic or floating point. Caelum
+handles small bounded integers, not real-number computation.</p></li>
+<li><p>You need <strong>real-time performance guarantees</strong> (deadlines in milliseconds) rather
+than logical ordering guarantees.</p></li>
 </ul>
+<p>A good practice is to model checking the <em>tricky core</em> of a system — the state
+machine where ordering matters — and leave the data-heavy or performance-critical
+parts to types, unit tests, and profiling. The techniques complement each other.</p>
+</section>
+<section id="see-it-work">
+<h2>See it work<a class="headerlink" href="#see-it-work" title="Link to this heading">¶</a></h2>
+<p>Here is a two-line system: a light that flips between <code class="docutils literal notranslate"><span class="pre">off</span></code> and <code class="docutils literal notranslate"><span class="pre">on</span></code>. The
+property claims it <em>always eventually</em> turns on again. Press <strong>Check ▶</strong> (or
+<code class="docutils literal notranslate"><span class="pre">Ctrl-Enter</span></code>) — it should pass.</p>
+<div class="highlight-lum notranslate"><div class="highlight"><pre><span></span><span class="k">let</span> <span class="n">light</span> <span class="o">∈</span> <span class="kt">enum</span> <span class="p">{</span> <span class="n">off</span><span class="p">,</span> <span class="n">on</span> <span class="p">}</span>
+
+<span class="k">init</span> <span class="p">{</span> <span class="n">light</span> <span class="o">=</span> <span class="n">off</span> <span class="p">}</span>
+
+<span class="k">transition</span> <span class="n">turn_on</span>  <span class="p">{</span> <span class="n">light</span> <span class="o">=</span> <span class="n">off</span> <span class="o">∧</span> <span class="n">light&#39;</span> <span class="o">=</span> <span class="n">on</span> <span class="p">}</span>
+<span class="k">transition</span> <span class="n">turn_off</span> <span class="p">{</span> <span class="n">light</span> <span class="o">=</span> <span class="n">on</span> <span class="o">∧</span> <span class="n">light&#39;</span> <span class="o">=</span> <span class="n">off</span> <span class="p">}</span>
+
+<span class="k">property</span> <span class="n">keeps_blinking</span> <span class="p">{</span> <span class="o">□</span> <span class="o">◇</span> <span class="p">(</span><span class="n">light</span> <span class="o">=</span> <span class="n">on</span><span class="p">)</span> <span class="p">}</span>
+</pre></div>
+</div>
+<p>Do not worry about the notation yet — <code class="docutils literal notranslate"><span class="pre">□</span> <span class="pre">◇</span></code> reads as “always eventually,” and
+the <a class="reference internal" href="tutorial.html"><span class="doc">Tutorial: A Traffic-Light Controller</span></a> introduces every symbol with a JavaScript analogy. The point
+for now: you described a tiny machine and a requirement, and Caelum checked the
+requirement against <em>every</em> run of the machine.</p>
+<p>Next, learn how the in-browser editor works in <a class="reference internal" href="using-the-editor.html"><span class="doc">Trying Caelum in Your Browser</span></a>, then build
+a real specification in the <a class="reference internal" href="tutorial.html"><span class="doc">Tutorial: A Traffic-Light Controller</span></a>.</p>
 </section>
 </section>
 
@@ -312,12 +346,12 @@ so it always returns to zero and always stays in range.</p>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="tutorial.html">
+          <a class="next-page" href="using-the-editor.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Tutorial</div>
+                <div class="title">Trying Caelum in Your Browser</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -362,12 +396,12 @@ so it always returns to zero and always stays in range.</p>
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">Getting Started</a><ul>
-<li><a class="reference internal" href="#prerequisites">Prerequisites</a></li>
-<li><a class="reference internal" href="#installation">Installation</a></li>
-<li><a class="reference internal" href="#your-first-specification">Your First Specification</a></li>
-<li><a class="reference internal" href="#understanding-output">Understanding Output</a></li>
-<li><a class="reference internal" href="#next-steps">Next Steps</a></li>
+<li><a class="reference internal" href="#">What Caelum Is For</a><ul>
+<li><a class="reference internal" href="#the-kind-of-specification">The kind of specification</a></li>
+<li><a class="reference internal" href="#why-not-just-write-tests">Why not just write tests?</a></li>
+<li><a class="reference internal" href="#where-it-shines">Where it shines</a></li>
+<li><a class="reference internal" href="#where-it-is-the-wrong-tool">Where it is the wrong tool</a></li>
+<li><a class="reference internal" href="#see-it-work">See it work</a></li>
 </ul>
 </li>
 </ul>
