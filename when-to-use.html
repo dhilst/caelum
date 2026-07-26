@@ -243,79 +243,143 @@
         <article role="main" id="furo-main-content">
           <section id="what-caelum-is-for">
 <h1>What Caelum Is For<a class="headerlink" href="#what-caelum-is-for" title="Link to this heading">¶</a></h1>
-<p>Before writing any specification, it helps to understand <em>what kind of problem</em>
-Caelum solves — and when reaching for a model checker pays off. This page assumes
-you can program but have never used formal logic or model checking. No syntax to
-memorise yet; that comes in the <a class="reference internal" href="tutorial.html"><span class="doc">Tutorial: A Traffic-Light Controller</span></a>.</p>
-<section id="the-kind-of-specification">
-<h2>The kind of specification<a class="headerlink" href="#the-kind-of-specification" title="Link to this heading">¶</a></h2>
-<p>Caelum works with two ingredients.</p>
-<p><strong>A model of a system as a state machine.</strong> You pick a handful of <em>variables</em> that
-capture the system’s state (a mode, a counter, whose turn it is) and you write
-<em>transitions</em> — the rules for how those variables can change from one step to the
-next. Together they define every state the system can be in and every way it can
-move between states. This is the same mental model as a state diagram you might
-sketch on a whiteboard, written down precisely.</p>
-<p><strong>Requirements as temporal properties.</strong> Once the machine is described, you state
-what must be true about it <em>over time</em>. These properties come in two flavours:</p>
+<p>Caelum is a <strong>behavioral specification tool</strong>. Before writing any specification,
+it helps to understand what that means, where it fits among the other things
+people call a “spec,” and when reaching for it pays off. This page assumes you can
+program but have never used formal logic or model checking. No syntax to memorise
+yet; that comes in the <a class="reference internal" href="tutorial.html"><span class="doc">Tutorial: A Traffic-Light Controller</span></a>.</p>
+<section id="two-layers-of-specification">
+<h2>Two layers of specification<a class="headerlink" href="#two-layers-of-specification" title="Link to this heading">¶</a></h2>
+<p>It is worth separating two very different things that both get called a
+“specification”:</p>
 <ul class="simple">
-<li><p><strong>Safety</strong> — <em>“something bad never happens.”</em> A safety property is a rule that
-must hold in every reachable state: two processes are never in the critical
-section at once; a booked seat is never double-sold; the buffer never overflows.</p></li>
-<li><p><strong>Liveness</strong> — <em>“something good eventually happens.”</em> A liveness property is a
-promise that the system keeps making progress: a request is always eventually
-served; every process eventually gets a turn; the system never permanently
-freezes.</p></li>
+<li><p><strong>Abstract specifications</strong> say <em>what</em> a system must do — independent of how it is
+built. Behavioral specs, functional (input/output) contracts, and data-model
+invariants all live here.</p></li>
+<li><p><strong>Technical specifications</strong> say <em>how</em> it is built — the stack and languages, the
+operating system and platform, the architecture and module structure, the wire
+protocols, and the <strong>quantitative / real-time constraints</strong> (a request answered
+<em>within 200 ms</em>, five-nines availability).</p></li>
+</ul>
+<p>These are <strong>layers, not bins</strong>: a single requirement usually has a facet in each.
+<em>“A password is never stored in plaintext”</em> is an abstract safety property;
+<em>“hash it with bcrypt”</em> is the technical realisation of that same rule. The
+abstract layer is the contract; the technical layer is how you meet it. Neither
+substitutes for the other.</p>
+<p>“Abstract” here means <em>implementation-independent</em>, <strong>not vague</strong>. A behavioral
+specification is often the most precise, and the only machine-checkable, artifact
+in the whole project.</p>
+<p><strong>Caelum occupies the behavioral corner of the abstract layer.</strong> It says nothing
+about your stack, your deadlines, or your architecture — only about how your system
+is allowed to <em>behave over time</em>.</p>
+</section>
+<section id="what-a-behavioral-specification-captures">
+<h2>What a behavioral specification captures<a class="headerlink" href="#what-a-behavioral-specification-captures" title="Link to this heading">¶</a></h2>
+<p>A behavioral spec has two ingredients.</p>
+<p><strong>A model of the system as a state transition system.</strong> You pick a handful of
+<em>variables</em> that capture the system’s state (a mode, a counter, whose turn it is)
+and you write <em>transitions</em> — the rules for how those variables may change from one
+step to the next. Together they define every state the system can be in and every
+way it can move between states. This is the same mental model as a state diagram
+you might sketch on a whiteboard, written down precisely. It is exactly how you
+model a <strong>distributed system</strong>: each node’s state, and the steps by which the whole
+system evolves.</p>
+<p><strong>Global, temporal properties.</strong> Once the machine is described, you ask questions
+about how it behaves <em>across whole runs</em>, not in a single snapshot. These come in
+two flavours:</p>
+<ul class="simple">
+<li><p><strong>Safety</strong> — <em>“something bad never happens.”</em> A rule that must hold in every
+reachable state: two nodes are never leaders at once; a booked seat is never
+double-sold; the buffer never overflows.</p></li>
+<li><p><strong>Liveness</strong> — <em>“something good eventually happens.”</em> A promise that the system
+keeps making progress: a request is always eventually served; every node
+eventually gets a turn; the system never permanently freezes.</p></li>
 </ul>
 <p>“Temporal” just means these statements talk about <em>sequences of states</em> — the
-future, the next step, forever — not a single snapshot. That is what Linear
-Temporal Logic (LTL) gives you, and it is what makes a model checker different
-from an ordinary assertion.</p>
+next step, the future, forever — not a single moment. That is what Linear Temporal
+Logic (LTL) gives you, and it is what makes a model checker different from an
+ordinary assertion. Behavioral specification is <strong>particularly well-suited to
+distributed systems</strong>, where the critical safety and liveness properties are
+precisely the ones that are hardest to get right by hand.</p>
+<p>(Other formalisms sit alongside Caelum in the abstract layer — design-by-contract,
+theorem provers such as Dafny, Coq, or Lean, refinement types, other model
+checkers such as TLA⁺ and SPIN. Caelum’s slice is explicit-state LTL model
+checking.)</p>
 </section>
-<section id="why-not-just-write-tests">
-<h2>Why not just write tests?<a class="headerlink" href="#why-not-just-write-tests" title="Link to this heading">¶</a></h2>
-<p>A unit test runs your system on <em>one</em> scenario and checks the outcome. That is
-great for catching the bugs you anticipated — but the nastiest bugs in stateful,
-concurrent, or event-driven systems come from the ordering you <em>didn’t</em> think of:
-the one interleaving out of thousands where two things happen in just the wrong
-order.</p>
-<p>Caelum is <strong>exhaustive</strong>. It explores <em>every</em> reachable state and <em>every</em> possible
-ordering of transitions, then checks your properties against all of them. If a
-counterexample exists — even a fifteen-step sequence you would never have written
-by hand — it finds it and shows it to you. If none exists, you have a proof that
-the property holds for the whole model, not just for the cases you tried.</p>
+<section id="why-not-just-test">
+<h2>Why not just test?<a class="headerlink" href="#why-not-just-test" title="Link to this heading">¶</a></h2>
+<p>To get the same confidence from testing a distributed system, you would have to
+deploy it, drive it through <em>all possible orderings</em> of state transitions, and
+analyse every resulting trace. The number of interleavings explodes
+combinatorially, so this is infeasible for most real systems — the nastiest bugs
+are exactly the one-in-a-thousand orderings you would never think to script.</p>
+<p>Caelum turns that around. You specify the system as a state transition system,
+write down the properties that must hold, and the model checker <strong>verifies every
+possible transition path</strong> for you — no deployment required. If a path leads to a
+state that violates a property, the check <strong>fails and hands you a counterexample</strong>:
+a concrete, replayable trace showing exactly how it goes wrong. If no such path
+exists, you have a proof that the property holds for the <em>whole model</em>, not just the
+cases you happened to try.</p>
 </section>
-<section id="where-it-shines">
-<h2>Where it shines<a class="headerlink" href="#where-it-shines" title="Link to this heading">¶</a></h2>
-<p>Model checking is a natural fit whenever correctness depends on <em>ordering, timing
-of events, or concurrency</em> rather than on crunching data:</p>
+<section id="where-it-fits-best">
+<h2>Where it fits best<a class="headerlink" href="#where-it-fits-best" title="Link to this heading">¶</a></h2>
+<p>Behavioral specification earns its keep whenever correctness depends on <em>ordering,
+concurrency, and reachable state</em> rather than on crunching data — most of all in
+distributed and concurrent systems:</p>
 <ul class="simple">
 <li><p><strong>Mutual exclusion and concurrency</strong> — locks, critical sections, race conditions.</p></li>
 <li><p><strong>Protocols and handshakes</strong> — connection setup/teardown, retry logic, message
 ordering.</p></li>
+<li><p><strong>Distributed coordination</strong> — leader election, consensus, replication invariants.</p></li>
 <li><p><strong>Controllers</strong> — traffic lights, elevators, vending machines, any device driven
 by a state machine (the <a class="reference internal" href="tutorial.html"><span class="doc">Tutorial: A Traffic-Light Controller</span></a> builds exactly one of these).</p></li>
 <li><p><strong>Lifecycle and workflow logic</strong> — an order that must go
 <code class="docutils literal notranslate"><span class="pre">created</span> <span class="pre">→</span> <span class="pre">paid</span> <span class="pre">→</span> <span class="pre">shipped</span></code> and never skip a step or move backwards.</p></li>
-<li><p><strong>Distributed coordination</strong> — leader election, consensus, replication invariants.</p></li>
 </ul>
 </section>
-<section id="where-it-is-the-wrong-tool">
-<h2>Where it is the wrong tool<a class="headerlink" href="#where-it-is-the-wrong-tool" title="Link to this heading">¶</a></h2>
-<p>Caelum is not a universal verifier. Look elsewhere when:</p>
+<section id="a-single-source-of-truth">
+<h2>A single source of truth<a class="headerlink" href="#a-single-source-of-truth" title="Link to this heading">¶</a></h2>
+<p>Once a behavioral specification is written and checked, it becomes a <strong>single
+source of truth</strong> for how the system is allowed to evolve and which global and
+temporal properties must hold. That has leverage beyond the check itself:</p>
 <ul class="simple">
-<li><p>The state space is <strong>not finite</strong> or is simply <strong>too large</strong> — Caelum has to be
-able to enumerate reachable states, and it stops at <code class="docutils literal notranslate"><span class="pre">--max-states</span></code> (100,000 by
-default). Systems dominated by large arrays, unbounded collections, or wide
-integer arithmetic blow up quickly.</p></li>
-<li><p>The hard part is <strong>numerical</strong> — heavy arithmetic or floating point. Caelum
-handles small bounded integers, not real-number computation.</p></li>
-<li><p>You need <strong>real-time performance guarantees</strong> (deadlines in milliseconds) rather
-than logical ordering guarantees.</p></li>
+<li><p>It <strong>guides the implementation</strong> — engineers build against an unambiguous
+description of the required behaviour.</p></li>
+<li><p>It <strong>guides the testing</strong> — the properties tell you precisely <em>what</em> must be
+tested, and counterexamples become ready-made regression cases.</p></li>
+<li><p>Because it stays <strong>abstract and compact</strong>, it is easy to read, review, and keep
+in sync — and easy for AI agents to ingest and reason about, including deriving
+tests directly from the properties.</p></li>
 </ul>
-<p>A good practice is to model checking the <em>tricky core</em> of a system — the state
-machine where ordering matters — and leave the data-heavy or performance-critical
-parts to types, unit tests, and profiling. The techniques complement each other.</p>
+</section>
+<section id="what-it-does-not-solve">
+<h2>What it does not solve<a class="headerlink" href="#what-it-does-not-solve" title="Link to this heading">¶</a></h2>
+<p>A compact, checked, abstract description of behaviour is powerful, but it is only
+one layer of the lifecycle. It deliberately leaves several things open:</p>
+<ul class="simple">
+<li><p><strong>The implementation still has to follow the spec.</strong> A behavioral spec states
+what must be true, not how to achieve it or whether a given implementation
+satisfies it. Someone — human or AI — must check that the code conforms; a good
+way is to derive tests from the properties that must hold.</p></li>
+<li><p><strong>You cannot mechanically derive the implementation from it.</strong> It will not tell
+you which stack to use or which functions and methods to write — only which
+behaviour they must exhibit. Those choices are the <em>technical</em> layer.</p></li>
+<li><p><strong>Liveness is qualitative, not quantitative.</strong> A behavioral spec says something
+<em>will</em> happen, never <em>when</em>. A request handled after five years still counts as
+“eventually handled” — obviously wrong by real-world expectations, yet perfectly
+consistent with the behavioral spec. Deadlines are quantitative / real-time
+constraints, which plain temporal logic cannot express; they belong to the
+technical layer (SLOs, load tests, timed models).</p></li>
+<li><p><strong>Caelum checks the model, not reality.</strong> If the model misrepresents the real
+system, every property can pass and still tell you nothing true. The fidelity of
+the model-to-world mapping is on the author.</p></li>
+</ul>
+<p>There are also hard limits on what Caelum can chew on: the state space must be
+<strong>finite</strong> and small enough to enumerate (it stops at <code class="docutils literal notranslate"><span class="pre">--max-states</span></code>, 100,000 by
+default), and the hard part must be <em>logical</em>, not <em>numerical</em> — small bounded
+integers, not heavy arithmetic or floating point. A good practice is to model-check
+the tricky behavioural core and leave the data-heavy and performance-critical parts
+to types, unit tests, and profiling. The layers complement each other.</p>
 </section>
 <section id="see-it-work">
 <h2>See it work<a class="headerlink" href="#see-it-work" title="Link to this heading">¶</a></h2>
@@ -334,8 +398,8 @@ property claims it <em>always eventually</em> turns on again. Press <strong>Chec
 </div>
 <p>Do not worry about the notation yet — <code class="docutils literal notranslate"><span class="pre">□</span> <span class="pre">◇</span></code> reads as “always eventually,” and
 the <a class="reference internal" href="tutorial.html"><span class="doc">Tutorial: A Traffic-Light Controller</span></a> introduces every symbol with a JavaScript analogy. The point
-for now: you described a tiny machine and a requirement, and Caelum checked the
-requirement against <em>every</em> run of the machine.</p>
+for now: you described a tiny state transition system and a global property, and
+Caelum checked that property against <em>every</em> run of the machine.</p>
 <p>Next, learn how the in-browser editor works in <a class="reference internal" href="using-the-editor.html"><span class="doc">Trying Caelum in Your Browser</span></a>, then build
 a real specification in the <a class="reference internal" href="tutorial.html"><span class="doc">Tutorial: A Traffic-Light Controller</span></a>.</p>
 </section>
@@ -397,10 +461,12 @@ a real specification in the <a class="reference internal" href="tutorial.html"><
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">What Caelum Is For</a><ul>
-<li><a class="reference internal" href="#the-kind-of-specification">The kind of specification</a></li>
-<li><a class="reference internal" href="#why-not-just-write-tests">Why not just write tests?</a></li>
-<li><a class="reference internal" href="#where-it-shines">Where it shines</a></li>
-<li><a class="reference internal" href="#where-it-is-the-wrong-tool">Where it is the wrong tool</a></li>
+<li><a class="reference internal" href="#two-layers-of-specification">Two layers of specification</a></li>
+<li><a class="reference internal" href="#what-a-behavioral-specification-captures">What a behavioral specification captures</a></li>
+<li><a class="reference internal" href="#why-not-just-test">Why not just test?</a></li>
+<li><a class="reference internal" href="#where-it-fits-best">Where it fits best</a></li>
+<li><a class="reference internal" href="#a-single-source-of-truth">A single source of truth</a></li>
+<li><a class="reference internal" href="#what-it-does-not-solve">What it does not solve</a></li>
 <li><a class="reference internal" href="#see-it-work">See it work</a></li>
 </ul>
 </li>
