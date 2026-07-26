@@ -1,9 +1,11 @@
 Playground
 ==========
 
-A full-page editor for experimenting with Caelum. It is seeded with a small
-modular counter. Edit anything and press **Check ▶** (or ``Ctrl-Enter``) to
-re-run the model checker.
+A full-page editor for experimenting with Caelum. Unlike the inline editors
+scattered through these docs (see :doc:`using-the-editor`), this is a blank
+scratchpad with room to work and the ability to load and share specifications by
+URL. It is seeded with a small modular counter. Edit anything and press
+**Check ▶** (or ``Ctrl-Enter``) to re-run the model checker.
 
 .. note::
 

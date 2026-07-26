@@ -1,5 +1,89 @@
-CLI Reference
-=============
+Command-Line Usage
+==================
+
+Everything in the :doc:`tutorial` runs in your browser, but installing the
+``caelum`` binary lets you check specifications offline, script them, and wire
+them into CI.
+
+Installation
+------------
+
+Prerequisite: the `Rust toolchain <https://rustup.rs/>`_ (edition 2021 or later).
+
+.. code-block:: bash
+
+   git clone https://github.com/dhilst/caelum.git
+   cd caelum
+   cargo build --release
+
+The binary is at ``target/release/caelum``.
+
+Your first check
+----------------
+
+Create a file called ``counter.lum``:
+
+.. code-block:: text
+
+   module examples.counter
+
+   const max = 3
+
+   let x ∈ 0..max
+
+   init {
+     x = 0
+   }
+
+   transition step {
+     x' = (x + 1) mod (max + 1)
+   }
+
+   property in_range {
+     □ (x >= 0 ∧ x <= max)
+   }
+
+   property returns_to_zero {
+     □ ◇ (x = 0)
+   }
+
+Run it:
+
+.. code-block:: bash
+
+   caelum counter.lum
+
+Both properties pass. The counter wraps around from ``max`` back to 0, so it
+always returns to zero and always stays in range.
+
+Reading the output
+------------------
+
+On success, Caelum prints a summary line and one line per property, and exits with
+code 0:
+
+.. code-block:: text
+
+   OK loaded 1 file(s), typechecked 5 item(s), built 4 reachable state(s) and 4 transition edge(s)
+   PASS property in_range
+   PASS property returns_to_zero
+
+On failure, the summary line starts with ``FAIL``, each broken property is listed,
+and the process exits with code 1. Add ``--show-trace`` to print the
+counterexample for each failing property:
+
+.. code-block:: text
+
+   FAIL property never_two
+   counterexample:
+     s0: x = 0
+          --(step)-->
+     s1: x = 1
+          --(step)-->
+     s2: x = 2
+
+Each ``--(name)-->`` arrow names the transition that fired between two states. For
+a liveness property the trace ends in a loop, marked ``cycle starts at sN``.
 
 Usage
 -----
