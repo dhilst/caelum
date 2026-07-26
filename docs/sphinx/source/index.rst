@@ -81,6 +81,7 @@ Where to start
    when-to-use
    using-the-editor
    tutorial
+   playground
 
 .. toctree::
    :maxdepth: 2
@@ -89,5 +90,4 @@ Where to start
    language-guide
    examples
    cli-reference
-   playground
    specification
