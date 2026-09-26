@@ -109,8 +109,8 @@ don't interact, so one is enough.
 - **A3 Processes eventually succeed.** A waiting run eventually gets the lock.
   Timeouts are left out: a run that gives up never touched the lock, so
   it can't affect safety.
-- **A4 A crashed host comes back.** It keeps starting new runs, so someone is
-  there to recover its stale lock.
+- **A4 A crashed process comes back.** Its host keeps starting new runs, so
+  someone is there to recover its stale lock.
 - **A5 Unique machine-id (environment).** ``/etc/machine-id`` is unique for
   each host in the system. The model gets this for free (``local ≠ remote``);
   production doesn't, see the note above.
@@ -154,7 +154,7 @@ Click **Check** to verify it in your browser:
    //   A3 processes eventually succeed: a waiter eventually acquires
    //      (a waiter that gives up leaves no trace in the lock, so safety is
    //       unaffected by dropping timeouts)
-   //   A4 hosts keep starting processes (a crashed host comes back) — implicit:
+   //   A4 a crashed process comes back: its host keeps starting new runs — implicit:
    //      there is no idle step, so when everyone waits on a stale lock the
    //      crash host's spawn is the only move
    //   A5 machine-id is unique for each host (environment) — implicit: hosts are
@@ -270,7 +270,7 @@ Click **Check** to verify it in your browser:
   crash is eventually taken back by a process on the crash host.
 - ``work_progresses`` (liveness): every waiting run eventually gets the lock.
 
-**What the model doesn't cover.** If the crash host never comes back (A4 is
+**What the model doesn't cover.** If the crashed process never comes back (A4 is
 false), its stale lock stays forever. No protocol without communication can
 fix this, because another host can't tell a dead host from a slow one. That
 case needs an operator (me) to remove the lock by hand, since a host failure

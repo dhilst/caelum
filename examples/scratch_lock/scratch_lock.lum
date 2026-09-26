@@ -29,7 +29,7 @@ module examples.scratch_lock
 //   A3 processes eventually succeed: a waiter eventually acquires
 //      (a waiter that gives up leaves no trace in the lock, so safety is
 //       unaffected by dropping timeouts)
-//   A4 hosts keep starting processes (a crashed host comes back) — implicit:
+//   A4 a crashed process comes back: its host keeps starting new runs — implicit:
 //      there is no idle step, so when everyone waits on a stale lock the
 //      crash host's spawn is the only move
 //   A5 machine-id is unique for each host (environment) — implicit: hosts are
