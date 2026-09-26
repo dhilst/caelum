@@ -412,8 +412,10 @@ eventually be taken.</p></li>
 transition expands into (<code class="docutils literal notranslate"><span class="pre">node_powers_on(n1)</span></code>, <code class="docutils literal notranslate"><span class="pre">node_powers_on(n2)</span></code>, …), so
 “weak <code class="docutils literal notranslate"><span class="pre">node_powers_on</span></code>” means <em>every</em> node eventually powers on. Fairness
 restricts only the infinite paths considered for liveness; it never affects
-safety (<code class="docutils literal notranslate"><span class="pre">□</span></code>) properties. The explicit engine <em>proves</em> fair liveness; the BMC
-engine <em>refutes</em> it (finds fair counterexamples up to the search depth).</p>
+safety (<code class="docutils literal notranslate"><span class="pre">□</span></code>) properties. The default BMC engine <em>refutes</em> fair liveness
+(finds fair counterexamples up to the search depth) and accepts liveness in the
+forms <code class="docutils literal notranslate"><span class="pre">◇</span> <span class="pre">φ</span></code> and <code class="docutils literal notranslate"><span class="pre">□</span> <span class="pre">◇</span> <span class="pre">φ</span></code>; <code class="docutils literal notranslate"><span class="pre">--engine</span> <span class="pre">explicit</span></code> <em>proves</em> it and also accepts
+nested forms such as <code class="docutils literal notranslate"><span class="pre">□</span> <span class="pre">(a</span> <span class="pre">→</span> <span class="pre">◇</span> <span class="pre">b)</span></code>.</p>
 </section>
 <section id="operators">
 <h2>Operators<a class="headerlink" href="#operators" title="Link to this heading">¶</a></h2>
@@ -685,6 +687,6 @@ engine <em>refutes</em> it (finds fair counterexamples up to the search depth).<
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/scripts/furo.js?v=46bd48cc"></script>
-    <script type="module" src="_static/caelum-init.js?v=271f9e15"></script>
+    <script type="module" src="_static/caelum-init.js?v=6c725c91"></script>
     </body>
 </html>

@@ -275,9 +275,11 @@ the checker right here in your browser — no install required.</p>
 and booleans, evolving through transitions.</p></li>
 <li><p>A checker of <strong>temporal properties</strong> written in Linear Temporal Logic (LTL) —
 statements about how a system behaves <em>over time</em>, not just in one state.</p></li>
-<li><p><strong>Exhaustive</strong>: it reasons about every reachable state and every possible
-ordering of events, so the bug that only shows up under one unlucky interleaving
-has nowhere to hide.</p></li>
+<li><p><strong>Exhaustive for safety</strong>: it proves “never” properties for every reachable
+state and every possible ordering of events, so the bug that only shows up
+under one unlucky interleaving has nowhere to hide. “Eventually” properties
+are searched for violations up to a bound; the <code class="docutils literal notranslate"><span class="pre">explicit</span></code> engine proves
+them too, on small models.</p></li>
 <li><p>A tool that <strong>explains failures</strong>: every failed property comes with a
 counterexample trace you can read.</p></li>
 </ul>
@@ -291,7 +293,7 @@ arbitrary mathematics.</p></li>
 enough to explore. It is a poor fit for heavy arithmetic, floating point, or big
 data structures.</p></li>
 <li><p><strong>Not sampling-based testing.</strong> It does not run your real program on example
-inputs; it checks a <em>model</em> of it, exhaustively.</p></li>
+inputs; it checks a <em>model</em> of it, symbolically.</p></li>
 <li><p><strong>Not a programming language.</strong> A <code class="docutils literal notranslate"><span class="pre">.lum</span></code> file describes behaviour and
 requirements; it does not compute results.</p></li>
 </ul>
@@ -475,6 +477,6 @@ tool (<a class="reference internal" href="cli-reference.html"><span class="doc">
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/scripts/furo.js?v=46bd48cc"></script>
-    <script type="module" src="_static/caelum-init.js?v=271f9e15"></script>
+    <script type="module" src="_static/caelum-init.js?v=6c725c91"></script>
     </body>
 </html>

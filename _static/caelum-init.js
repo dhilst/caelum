@@ -42,7 +42,9 @@ function loadEditor() {
 
 // Load and instantiate the wasm module once, then wrap it in the `{ check }`
 // shape the editor expects. The page owns the `check_spec` string/opts contract
-// (synchronous varisat "explicit" engine — no cross-origin isolation needed), so
+// (synchronous BMC engine with the in-module varisat solver, k-induction on,
+// depth 20 to keep liveness checks interactive —
+// no cross-origin isolation needed), so
 // the editor stays agnostic of it.
 let wasmPromise = null;
 function loadWasm() {
@@ -51,7 +53,7 @@ function loadWasm() {
       await mod.default(); // instantiate the .wasm
       return {
         check: (source) =>
-          JSON.parse(mod.check_spec(source, JSON.stringify({ engine: "explicit" }))),
+          JSON.parse(mod.check_spec(source, JSON.stringify({ engine: "bmc", prove: true, bmc_depth: 20 }))),
       };
     });
   }

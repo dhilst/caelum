@@ -369,19 +369,24 @@ caelum<span class="w"> </span>fmt<span class="w"> </span>--print-unicode-operato
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">human|json</span></code></p></td>
 <td><p>Output format (default: <code class="docutils literal notranslate"><span class="pre">human</span></code>)</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--engine</span> <span class="pre">explicit|bmc</span></code></p></td>
-<td><p>Checking engine (default: <code class="docutils literal notranslate"><span class="pre">explicit</span></code>). <code class="docutils literal notranslate"><span class="pre">bmc</span></code> runs bounded model checking.</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--engine</span> <span class="pre">bmc|explicit</span></code></p></td>
+<td><p>Checking engine (default: <code class="docutils literal notranslate"><span class="pre">bmc</span></code>). <code class="docutils literal notranslate"><span class="pre">bmc</span></code> proves safety properties by
+k-induction and searches for liveness violations up to <code class="docutils literal notranslate"><span class="pre">--bmc-depth</span></code>.
+<code class="docutils literal notranslate"><span class="pre">explicit</span></code> enumerates every reachable state and also proves liveness,
+but only scales to small state spaces.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--solver</span> <span class="pre">varisat|cadical|z3</span></code></p></td>
-<td><p>SAT backend for the <code class="docutils literal notranslate"><span class="pre">bmc</span></code> engine (default: <code class="docutils literal notranslate"><span class="pre">z3</span></code>). Requires the
-matching Cargo feature to be compiled in; <code class="docutils literal notranslate"><span class="pre">z3</span></code> links the system
-<code class="docutils literal notranslate"><span class="pre">libz3</span></code> (install <code class="docutils literal notranslate"><span class="pre">libz3-dev</span></code> / the <code class="docutils literal notranslate"><span class="pre">z3</span></code> package).</p></td>
+<td><p>SAT backend for the <code class="docutils literal notranslate"><span class="pre">bmc</span></code> engine (default: <code class="docutils literal notranslate"><span class="pre">varisat</span></code>, pure Rust,
+the same backend the browser uses). Requires the matching Cargo feature
+to be compiled in; <code class="docutils literal notranslate"><span class="pre">z3</span></code> links the system <code class="docutils literal notranslate"><span class="pre">libz3</span></code> (install
+<code class="docutils literal notranslate"><span class="pre">libz3-dev</span></code> / the <code class="docutils literal notranslate"><span class="pre">z3</span></code> package).</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--bmc-depth</span> <span class="pre">N</span></code></p></td>
 <td><p>Unrolling depth for the <code class="docutils literal notranslate"><span class="pre">bmc</span></code> engine (default: 50)</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--prove</span></code> (alias <code class="docutils literal notranslate"><span class="pre">--k-induction</span></code>)</p></td>
-<td><p>Attempt k-induction to certify safety properties under <code class="docutils literal notranslate"><span class="pre">--engine</span> <span class="pre">bmc</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--no-prove</span></code></p></td>
+<td><p>Skip k-induction under <code class="docutils literal notranslate"><span class="pre">--engine</span> <span class="pre">bmc</span></code>: report bounded results only.
+(k-induction is on by default; <code class="docutils literal notranslate"><span class="pre">--prove</span></code> is accepted and does nothing.)</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--show-trace</span></code></p></td>
 <td><p>Display counterexample traces on failure</p></td>
@@ -529,6 +534,6 @@ matching Cargo feature to be compiled in; <code class="docutils literal notransl
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/scripts/furo.js?v=46bd48cc"></script>
-    <script type="module" src="_static/caelum-init.js?v=271f9e15"></script>
+    <script type="module" src="_static/caelum-init.js?v=6c725c91"></script>
     </body>
 </html>

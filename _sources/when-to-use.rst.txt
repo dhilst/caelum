@@ -69,8 +69,9 @@ precisely the ones that are hardest to get right by hand.
 
 (Other formalisms sit alongside Caelum in the abstract layer — design-by-contract,
 theorem provers such as Dafny, Coq, or Lean, refinement types, other model
-checkers such as TLA⁺ and SPIN. Caelum's slice is explicit-state LTL model
-checking.)
+checkers such as TLA⁺ and SPIN. Caelum's slice is LTL model checking of small
+finite-state models: bounded model checking with k-induction by default, and
+explicit-state checking when a model is small enough to enumerate.)
 
 Why not just test?
 ------------------

@@ -285,8 +285,16 @@ no account is required. Close the tab and it is gone.</p>
 <section id="reading-the-results">
 <h2>Reading the results<a class="headerlink" href="#reading-the-results" title="Link to this heading">¶</a></h2>
 <p>When you run a spec, a results pane appears beneath the editor.</p>
-<p><strong>Passing.</strong> Each property is listed with a pass marker. A pass means Caelum
-explored every reachable state and found no way to violate the property.</p>
+<p><strong>Passing.</strong> Each property is listed with a ✓ and a badge:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">certified</span></code> — proved for every reachable state (by k-induction). Safety
+properties usually end up here.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pass</span></code> — no violation exists within the first 20 steps. This is what a
+liveness property (<code class="docutils literal notranslate"><span class="pre">◇</span></code>, <code class="docutils literal notranslate"><span class="pre">□</span> <span class="pre">◇</span></code>) gets in the browser: a counterexample
+would be a loop, and none fits in 20 steps.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">skipped</span></code> — the property’s form isn’t supported by the browser’s engine
+(for example <code class="docutils literal notranslate"><span class="pre">□</span> <span class="pre">(a</span> <span class="pre">→</span> <span class="pre">◇</span> <span class="pre">b)</span></code>); rewrite it as <code class="docutils literal notranslate"><span class="pre">□</span> <span class="pre">◇</span> <span class="pre">…</span></code>.</p></li>
+</ul>
 <p><strong>Failing — the counterexample trace.</strong> When a property <em>can</em> be broken, Caelum
 shows a <strong>counterexample</strong>: a table with one row per state, the variable values in
 each, and the transition taken between rows. It is a concrete, replayable story of
@@ -414,6 +422,6 @@ the ability to load and share specifications by URL.</p></li>
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/scripts/furo.js?v=46bd48cc"></script>
-    <script type="module" src="_static/caelum-init.js?v=271f9e15"></script>
+    <script type="module" src="_static/caelum-init.js?v=6c725c91"></script>
     </body>
 </html>

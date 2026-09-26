@@ -3,7 +3,9 @@
 /**
  * Check a single-file spec with the in-module varisat backend. `opts_json` is
  * a JSON object; all fields optional:
- * `{ "engine": "explicit"|"bmc", "bmc_depth": u, "prove": bool, "max_states": u }`.
+ * `{ "engine": "bmc"|"explicit", "bmc_depth": u, "prove": bool, "max_states": u }`.
+ * Defaults: `engine = "bmc"`, `bmc_depth = 50`, `prove = true` (k-induction
+ * proves safety; liveness is refuted up to `bmc_depth`).
  * Returns a JSON report string (or `{ "error": ... }`).
  * @param {string} source
  * @param {string} opts_json

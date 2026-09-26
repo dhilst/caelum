@@ -120,7 +120,10 @@ A2 and A3 are the ``fairness`` block. A4 needs no declaration: the model has
 no idle step, so when everyone is waiting on a stale lock, starting a new run
 on the crash host is the only possible move.
 
-Click **Check** to verify it in your browser:
+Click **Check** to verify it in your browser. The safety properties come back
+``certified`` (proved for every reachable state by k-induction); the liveness
+properties come back ``pass`` (no violating loop within 20 steps).
+``caelum check --engine explicit`` proves all five exhaustively (44 states).
 
 .. code-block:: lum
 
@@ -246,10 +249,11 @@ Click **Check** to verify it in your browser:
 
    // ── Liveness: crash is recoverable ──────────────────────────────────────────
 
-   // L1. A crash while holding the lock doesn't deadlock: the crash host
-   // eventually takes the lock back.
+   // L1. A crash while holding the lock doesn't deadlock: the lock is never
+   // stale forever. (Only the crash host can recover it, by the guard of
+   // `acquire`, so it is the crash host that takes it back.)
    property crash_recoverable {
-     □ (∀ h ∈ Host: (lock = stale ∧ owner = h) → ◇ (lock = locked ∧ owner = h))
+     □ ◇ (lock ≠ stale)
    }
 
    // ── Liveness: work progresses ───────────────────────────────────────────────
@@ -270,8 +274,9 @@ Click **Check** to verify it in your browser:
   pushes in.
 - ``lock_matches_holder`` (safety): the lock's metadata always names the holder's
   host, so the liveness check in A0 is asked of the right host.
-- ``crash_recoverable`` (liveness, *no deadlock*): a lock left behind by a
-  crash is eventually taken back by a process on the crash host.
+- ``crash_recoverable`` (liveness, *no deadlock*): the lock is never stale
+  forever. Only the crash host may recover a stale lock (the guard of
+  ``acquire``), so it is the crash host that takes it back.
 - ``work_progresses`` (liveness): the lock keeps being taken, so the pipeline
   as a whole never stalls.
 
