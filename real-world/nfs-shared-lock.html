@@ -265,7 +265,8 @@ writing happens only while holding the lock. This is a convention the
 pipeline code enforces and checks.</p></li>
 <li><p>The lock is a directory plus metadata, created inside the directory that it
 locks (see the “Note” below). The metadata records <strong>who</strong> holds it: the
-hostname and the process identity (pid, process start time and boot id).</p></li>
+machine (<code class="docutils literal notranslate"><span class="pre">/etc/machine-id</span></code>, plus the hostname for humans) and the process
+identity (pid, process start time and boot id).</p></li>
 </ul>
 <p>Two things must never happen:</p>
 <ul class="simple">
@@ -287,20 +288,31 @@ it, a crashed holder and a slow holder look the same, so it must never take
 the lock over. It can only wait.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>Technical details: In <strong>re-exported</strong> NFS mount, the kernel refuses file
-locks, <code class="docutils literal notranslate"><span class="pre">flock</span></code>/<code class="docutils literal notranslate"><span class="pre">fcntl</span></code> fail with <code class="docutils literal notranslate"><span class="pre">EOPNOTSUPP</span></code>, so the locking has to
-be implemented from operations that NFSv4 makes atomic on the server:
-<code class="docutils literal notranslate"><span class="pre">mkdir</span></code> and <code class="docutils literal notranslate"><span class="pre">rename</span></code>.</p>
+<p>Technical details:</p>
+<ul class="simple">
+<li><p>In <strong>re-exported</strong> NFS mount, the kernel refuses file locks,
+<code class="docutils literal notranslate"><span class="pre">flock</span></code>/<code class="docutils literal notranslate"><span class="pre">fcntl</span></code> fail with <code class="docutils literal notranslate"><span class="pre">EOPNOTSUPP</span></code>, so the locking has to be
+implemented from operations that NFSv4 makes atomic on the server:
+<code class="docutils literal notranslate"><span class="pre">mkdir</span></code> and <code class="docutils literal notranslate"><span class="pre">rename</span></code>.</p></li>
+<li><p>The host is identified by <code class="docutils literal notranslate"><span class="pre">/etc/machine-id</span></code>, which may <strong>not</strong> be
+unique: VMs cloned from the same VM or template carry a copy of it. Two
+hosts sharing a machine-id would each judge the other’s lock as their
+own, and could take over a live lock. Uniqueness must be checked
+manually on every host (A5).</p></li>
+</ul>
 </div>
 </section>
 <section id="the-protocol">
 <h2>The protocol<a class="headerlink" href="#the-protocol" title="Link to this heading">¶</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">acquire</span></code> (repeat until it succeeds, or give up after a timeout):</p>
 <ol class="arabic simple">
-<li><p>If there is no lock, atomically create it with your <code class="docutils literal notranslate"><span class="pre">(host,</span> <span class="pre">pid,</span> <span class="pre">boot-id,</span> <span class="pre">start_time)</span></code>
-metadata. If the create fails, someone else won the race.</p></li>
-<li><p>If there is a lock whose metadata names <strong>your</strong> host and a process that
-is dead, atomically replace it with your own. That’s the crash recovery.</p></li>
+<li><p>If there is no lock, atomically create it with your
+<code class="docutils literal notranslate"><span class="pre">(machine-id,</span> <span class="pre">hostname,</span> <span class="pre">boot-id,</span> <span class="pre">pid,</span> <span class="pre">start_time)</span></code> metadata. If the create
+fails, someone else won the race.</p></li>
+<li><p>If there is a lock whose <code class="docutils literal notranslate"><span class="pre">machine-id</span></code> is <strong>yours</strong> and whose process is
+dead (different <code class="docutils literal notranslate"><span class="pre">boot-id</span></code>, or the <code class="docutils literal notranslate"><span class="pre">pid</span></code> is gone or has a different
+<code class="docutils literal notranslate"><span class="pre">start_time</span></code>), atomically replace it with your own. That’s the crash
+recovery.</p></li>
 <li><p>Otherwise someone is working. Wait.</p></li>
 </ol>
 <p><code class="docutils literal notranslate"><span class="pre">release</span></code>: remove the lock.</p>
@@ -341,6 +353,9 @@ Timeouts are left out: a run that gives up never touched the lock, so
 it can’t affect safety.</p></li>
 <li><p><strong>A4 A crashed host comes back.</strong> It keeps starting new runs, so someone is
 there to recover its stale lock.</p></li>
+<li><p><strong>A5 Unique machine-id (environment).</strong> <code class="docutils literal notranslate"><span class="pre">/etc/machine-id</span></code> is unique for
+each host in the system. The model gets this for free (<code class="docutils literal notranslate"><span class="pre">local</span> <span class="pre">≠</span> <span class="pre">remote</span></code>);
+production doesn’t, see the note above.</p></li>
 </ul>
 <p>A2 and A3 are the <code class="docutils literal notranslate"><span class="pre">fairness</span></code> block. A4 needs no declaration: the model has
 no idle step, so when everyone is waiting on a stale lock, starting a new run

@@ -22,7 +22,8 @@ export, and jobs read and write there directly. To keep things simple, jobs
   pipeline code enforces and checks.
 - The lock is a directory plus metadata, created inside the directory that it
   locks (see the "Note" below). The metadata records **who** holds it: the
-  hostname and the process identity (pid, process start time and boot id).
+  machine (``/etc/machine-id``, plus the hostname for humans) and the process
+  identity (pid, process start time and boot id).
 
 Two things must never happen:
 
@@ -45,20 +46,30 @@ the lock over. It can only wait.
 
 .. note::
 
-   Technical details: In **re-exported** NFS mount, the kernel refuses file
-   locks, ``flock``/``fcntl`` fail with ``EOPNOTSUPP``, so the locking has to
-   be implemented from operations that NFSv4 makes atomic on the server:
-   ``mkdir`` and ``rename``.
+   Technical details:
+
+   - In **re-exported** NFS mount, the kernel refuses file locks,
+     ``flock``/``fcntl`` fail with ``EOPNOTSUPP``, so the locking has to be
+     implemented from operations that NFSv4 makes atomic on the server:
+     ``mkdir`` and ``rename``.
+   - The host is identified by ``/etc/machine-id``, which may **not** be
+     unique: VMs cloned from the same VM or template carry a copy of it. Two
+     hosts sharing a machine-id would each judge the other's lock as their
+     own, and could take over a live lock. Uniqueness must be checked
+     manually on every host (A5).
 
 The protocol
 ------------
 
 ``acquire`` (repeat until it succeeds, or give up after a timeout):
 
-1. If there is no lock, atomically create it with your ``(host, pid, boot-id, start_time)``
-   metadata. If the create fails, someone else won the race.
-2. If there is a lock whose metadata names **your** host and a process that
-   is dead, atomically replace it with your own. That's the crash recovery.
+1. If there is no lock, atomically create it with your
+   ``(machine-id, hostname, boot-id, pid, start_time)`` metadata. If the create
+   fails, someone else won the race.
+2. If there is a lock whose ``machine-id`` is **yours** and whose process is
+   dead (different ``boot-id``, or the ``pid`` is gone or has a different
+   ``start_time``), atomically replace it with your own. That's the crash
+   recovery.
 3. Otherwise someone is working. Wait.
 
 ``release``: remove the lock.
@@ -100,6 +111,9 @@ don't interact, so one is enough.
   it can't affect safety.
 - **A4 A crashed host comes back.** It keeps starting new runs, so someone is
   there to recover its stale lock.
+- **A5 Unique machine-id (environment).** ``/etc/machine-id`` is unique for
+  each host in the system. The model gets this for free (``local ≠ remote``);
+  production doesn't, see the note above.
 
 A2 and A3 are the ``fairness`` block. A4 needs no declaration: the model has
 no idle step, so when everyone is waiting on a stale lock, starting a new run
