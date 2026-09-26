@@ -242,8 +242,9 @@ Click **Check** to verify it in your browser:
 **What the model doesn't cover.** If the crash host never comes back (A4 is
 false), its stale lock stays forever. No protocol without communication can
 fix this, because another host can't tell a dead host from a slow one. That
-case needs an operator to remove the lock by hand. The model also assumes
-that jobs honour the write-only-under-lock convention; that part is enforced
-in the pipeline code, not by the lock.
+case needs an operator (me) to remove the lock by hand, since a host failure
+shows up in the pipeline, nothing fails silently. The model also assumes that
+jobs honour the write-only-under-lock convention; that part is enforced in the
+client code; enforced by testing, not by the lock library.
 
 See ``examples/scratch_lock/scratch_lock.lum`` in the repository for the spec file.
