@@ -280,6 +280,6 @@ client code; enforced by testing, not by the lock library.
 
 See ``examples/scratch_lock/scratch_lock.lum`` in the repository for the spec file.
 
-For the story behind this example, and why avoiding coordination avoids a
-consensus problem, see the blog post
-`The Lock That Never Asks Anyone <https://dhilst.github.io/formal-verification/model-checking/caelum/distributed-systems/nfs/2026/09/26/The-Lock-That-Never-Asks-Anyone/>`_.
+For the background of this example, and why avoiding coordination avoids a
+consensus problem, see the article
+`A Distributed Pipeline Formalization in Caelum <https://dhilst.github.io/formal-verification/model-checking/caelum/distributed-systems/nfs/2026/09/26/The-Lock-That-Never-Asks-Anyone/>`_.
