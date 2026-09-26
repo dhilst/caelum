@@ -42,6 +42,13 @@ can take the lock over. A process on *another* host can't make that check: to
 it, a crashed holder and a slow holder look the same, so it must never take
 the lock over. It can only wait.
 
+.. note::
+
+   Technical details: In **re-exported** NFS mount, the kernel refuses file
+   locks, ``flock``/``fcntl`` fail with ``EOPNOTSUPP``, so the locking has to
+   be implemented from operations that NFSv4 makes atomic on the server:
+   ``mkdir`` and ``rename``.
+
 The protocol
 ------------
 

@@ -284,6 +284,13 @@ So when the next run finds a lock left by a dead process <em>on its own host</em
 can take the lock over. A process on <em>another</em> host can’t make that check: to
 it, a crashed holder and a slow holder look the same, so it must never take
 the lock over. It can only wait.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Technical details: In <strong>re-exported</strong> NFS mount, the kernel refuses file
+locks, <code class="docutils literal notranslate"><span class="pre">flock</span></code>/<code class="docutils literal notranslate"><span class="pre">fcntl</span></code> fail with <code class="docutils literal notranslate"><span class="pre">EOPNOTSUPP</span></code>, so the locking has to
+be implemented from operations that NFSv4 makes atomic on the server:
+<code class="docutils literal notranslate"><span class="pre">mkdir</span></code> and <code class="docutils literal notranslate"><span class="pre">rename</span></code>.</p>
+</div>
 </section>
 <section id="the-protocol">
 <h2>The protocol<a class="headerlink" href="#the-protocol" title="Link to this heading">¶</a></h2>
