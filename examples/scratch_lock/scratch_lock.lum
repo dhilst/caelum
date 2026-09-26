@@ -1,0 +1,119 @@
+module examples.scratch_lock
+
+// Distributed locking over a shared scratch space.
+//
+// Concrete case: several hosts mount the same NFS export. Each work w has a
+// lock file in the mount holding (host, pid). This model is the lock of ONE
+// work w; every process is an instance of w (works don't interact). If q
+// starts while p is running, q must wait.
+//
+// The lock file is the only shared state (no host-to-host messages). Any host
+// can take a free lock. If the holder crashes its record stays behind, stale.
+//
+// Structure:
+//   H = {0, 1},  P = {0, 1, 2},  host(p) = p / 2
+//   host 0 runs pids 0, 1 (same-host recovery race); host 1 runs pid 2 (remote)
+//
+// Lock record:  rec ∈ {none, live, stale},  owner = host field of the record.
+// Pids are unique (pid + start time), so only a crash makes a record stale.
+//
+// Assumptions:
+//   A0 same-host liveness (safety): only the holder's host can see that the
+//      pid is dead (kill(pid, 0)); another host can't tell "crashed" from
+//      "still working". So only the crash host may recover a stale lock —
+//      encoded in the guard of `acquire`.
+//   A1 create and recover are atomic (CAS) on the scratch space
+//   A2 processes finish: a holder eventually releases or crashes
+//   A3 processes eventually succeed: a waiter eventually acquires
+//      (a waiter that gives up leaves no trace in the lock, so safety is
+//       unaffected by dropping timeouts)
+//   A4 hosts keep starting processes (a crashed host comes back) — implicit:
+//      there is no idle step, so when everyone waits on a stale lock the
+//      crash host's spawn is the only move
+
+type Host = 0..1
+type Proc = 0..2
+
+type PState = enum { free, waiting, holding }  // free = slot empty (never started / done / crashed)
+type Record = enum { none, live, stale }
+
+let st[p ∈ Proc] ∈ PState
+let rec   ∈ Record
+let owner ∈ Host
+
+init {
+  (∀ p ∈ Proc: st[p] = free) ∧ rec = none ∧ owner = 0
+}
+
+// A new process starts and calls acquire.
+transition spawn(p ∈ Proc) {
+  st[p] = free ∧
+  st[p]' = waiting ∧
+  unchanged(st except p, rec, owner)
+}
+
+// acquire → ok (atomic CAS, A1): take a free lock (any host), or recover a
+// stale one — only on the owner's host (A0).
+transition acquire(p ∈ Proc) {
+  st[p] = waiting ∧
+  (rec = none ∨ (rec = stale ∧ owner = p / 2)) ∧
+  st[p]' = holding ∧
+  rec' = live ∧
+  owner' = p / 2 ∧
+  unchanged(st except p)
+}
+
+// The holder finishes and releases the lock.
+transition release(p ∈ Proc) {
+  st[p] = holding ∧
+  st[p]' = free ∧
+  rec' = none ∧
+  unchanged(st except p, owner)
+}
+
+// The holder crashes: its record is left behind, stale.
+transition crash(p ∈ Proc) {
+  st[p] = holding ∧
+  st[p]' = free ∧
+  rec' = stale ∧
+  unchanged(st except p, owner)
+}
+
+fairness {
+  weak   release           // A2 (a crash also ends the holder)
+  strong acquire           // A3
+}
+
+// ── Safety: no data races ───────────────────────────────────────────────────
+
+// S1. At most one process holds the lock.
+property mutual_exclusion {
+  □ (∀ p ∈ Proc: ∀ q ∈ Proc: (p ≠ q ∧ st[p] = holding) → st[q] ≠ holding)
+}
+
+// S2. If q starts while p holds the lock, q waits until p is gone.
+property second_instance_waits {
+  □ (∀ p ∈ Proc: ∀ q ∈ Proc:
+       (p ≠ q ∧ st[p] = holding ∧ st[q] = waiting) →
+         ◯ (st[q] = waiting ∨ st[p] = free))
+}
+
+// S3. The lock file names the holder's host.
+property record_matches_holder {
+  □ (∀ p ∈ Proc: st[p] = holding → (rec = live ∧ owner = p / 2))
+}
+
+// ── Liveness: crash is recoverable ──────────────────────────────────────────
+
+// L1. A crash while holding the lock doesn't deadlock: the crash host
+// eventually takes the lock back.
+property crash_recoverable {
+  □ (∀ h ∈ Host: (rec = stale ∧ owner = h) → ◇ (rec = live ∧ owner = h))
+}
+
+// ── Liveness: work progresses ───────────────────────────────────────────────
+
+// L2. Every waiting process eventually gets the lock.
+property work_progresses {
+  □ (∀ p ∈ Proc: st[p] = waiting → ◇ (st[p] = holding))
+}
