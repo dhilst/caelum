@@ -263,9 +263,9 @@ export, and jobs read and write there directly. To keep things simple, jobs
 <li><p>A job <strong>locks a directory</strong> on NFS before writing to it. Anyone may read, but
 writing happens only while holding the lock. This is a convention the
 pipeline code enforces and checks.</p></li>
-<li><p>The lock is a directory inside the directory that it locks (see the “Note”
-below), recording <strong>who</strong> holds it: the hostname and the process identity
-(pid, process start time and boot id).</p></li>
+<li><p>The lock is a directory plus metadata, created inside the directory that it
+locks (see the “Note” below). The metadata records <strong>who</strong> holds it: the
+hostname and the process identity (pid, process start time and boot id).</p></li>
 </ul>
 <p>Two things must never happen:</p>
 <ul class="simple">
@@ -274,7 +274,7 @@ If a bug makes a job try, it should <strong>fail loudly</strong> (wait or time o
 rather than silently overwrite someone else’s data. This is the main safety
 property.</p></li>
 <li><p><strong>Deadlock after a crash.</strong> If a job crashes while holding the lock, the
-lock file stays behind. The next run of that job must still be able to
+lock stays behind. The next run of that job must still be able to
 proceed, or the pipeline is stuck forever.</p></li>
 </ul>
 <p>The key fact that makes recovery safe without any coordination: <strong>a given job
@@ -297,13 +297,13 @@ be implemented from operations that NFSv4 makes atomic on the server:
 <h2>The protocol<a class="headerlink" href="#the-protocol" title="Link to this heading">¶</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">acquire</span></code> (repeat until it succeeds, or give up after a timeout):</p>
 <ol class="arabic simple">
-<li><p>If there is no lock file, atomically create it with your
-<code class="docutils literal notranslate"><span class="pre">(host,</span> <span class="pre">pid)</span></code> record. If the create fails, someone else won the race.</p></li>
-<li><p>If there is a lock file whose host is <strong>your</strong> host and whose process is
-dead, atomically replace it with your record. That’s the crash recovery.</p></li>
+<li><p>If there is no lock, atomically create it with your <code class="docutils literal notranslate"><span class="pre">(host,</span> <span class="pre">pid)</span></code>
+metadata. If the create fails, someone else won the race.</p></li>
+<li><p>If there is a lock whose metadata names <strong>your</strong> host and a process that
+is dead, atomically replace it with your own. That’s the crash recovery.</p></li>
 <li><p>Otherwise someone is working. Wait.</p></li>
 </ol>
-<p><code class="docutils literal notranslate"><span class="pre">release</span></code>: delete the lock file.</p>
+<p><code class="docutils literal notranslate"><span class="pre">release</span></code>: remove the lock.</p>
 </section>
 <section id="the-model">
 <h2>The model<a class="headerlink" href="#the-model" title="Link to this heading">¶</a></h2>
@@ -319,9 +319,9 @@ in its own <code class="docutils literal notranslate"><span class="pre">init</sp
 <li><p><strong>Process state.</strong> Each slot is <code class="docutils literal notranslate"><span class="pre">free</span></code> (not running, finished, or
 crashed), <code class="docutils literal notranslate"><span class="pre">waiting</span></code> (inside <code class="docutils literal notranslate"><span class="pre">acquire</span></code>) or <code class="docutils literal notranslate"><span class="pre">holding</span></code> (owns the lock and
 may write).</p></li>
-<li><p><strong>The lock file.</strong> <code class="docutils literal notranslate"><span class="pre">rec</span></code> is <code class="docutils literal notranslate"><span class="pre">none</span></code> (no lock file), <code class="docutils literal notranslate"><span class="pre">live</span></code> (held by a
+<li><p><strong>The lock.</strong> <code class="docutils literal notranslate"><span class="pre">rec</span></code> is <code class="docutils literal notranslate"><span class="pre">none</span></code> (no lock), <code class="docutils literal notranslate"><span class="pre">live</span></code> (held by a
 running process) or <code class="docutils literal notranslate"><span class="pre">stale</span></code> (held by a process that crashed). <code class="docutils literal notranslate"><span class="pre">owner</span></code> is
-the host recorded in the file. The difference between <code class="docutils literal notranslate"><span class="pre">live</span></code> and
+the host recorded in the metadata. The difference between <code class="docutils literal notranslate"><span class="pre">live</span></code> and
 <code class="docutils literal notranslate"><span class="pre">stale</span></code> is only observable from the owner’s host.</p></li>
 <li><p><strong>Transitions.</strong> <code class="docutils literal notranslate"><span class="pre">spawn</span></code> starts a run, <code class="docutils literal notranslate"><span class="pre">acquire</span></code> takes a free lock or
 recovers a stale one on its own host, <code class="docutils literal notranslate"><span class="pre">release</span></code> finishes normally, and
@@ -332,12 +332,12 @@ recovers a stale one on its own host, <code class="docutils literal notranslate"
 <li><p><strong>A0 Same-host liveness check (safety).</strong> Only the recorded host can decide
 that the holder is dead, so only it may recover. This is the guard
 <code class="docutils literal notranslate"><span class="pre">owner</span> <span class="pre">=</span> <span class="pre">host[p]</span></code> in <code class="docutils literal notranslate"><span class="pre">acquire</span></code>.</p></li>
-<li><p><strong>A1 Atomic create/replace.</strong> Checking the lock file and writing it happen
-as one step on NFS (e.g. exclusive create, or <code class="docutils literal notranslate"><span class="pre">link()</span></code> + link count
-check).</p></li>
+<li><p><strong>A1 Atomic create/replace.</strong> Checking the lock and creating it happen
+as one step on NFS (<code class="docutils literal notranslate"><span class="pre">mkdir</span></code> fails if the directory already exists;
+<code class="docutils literal notranslate"><span class="pre">rename</span></code> is atomic).</p></li>
 <li><p><strong>A2 Processes finish.</strong> A holder eventually releases the lock or crashes.</p></li>
 <li><p><strong>A3 Processes eventually succeed.</strong> A waiting run eventually gets the lock.
-Timeouts are left out: a run that gives up never touched the lock file, so
+Timeouts are left out: a run that gives up never touched the lock, so
 it can’t affect safety.</p></li>
 <li><p><strong>A4 A crashed host comes back.</strong> It keeps starting new runs, so someone is
 there to recover its stale lock.</p></li>
@@ -483,7 +483,7 @@ holds the lock, across all hosts.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">second_instance_waits</span></code> (safety): if a run starts while another one holds
 the lock, it waits until the holder has released it or crashed. It never
 pushes in.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">record_matches_holder</span></code> (safety): the lock file always names the holder’s
+<li><p><code class="docutils literal notranslate"><span class="pre">record_matches_holder</span></code> (safety): the lock’s metadata always names the holder’s
 host, so the liveness check in A0 is asked of the right host.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">crash_recoverable</span></code> (liveness, <em>no deadlock</em>): a lock left behind by a
 crash is eventually taken back by a process on the crash host.</p></li>

@@ -20,9 +20,9 @@ export, and jobs read and write there directly. To keep things simple, jobs
 - A job **locks a directory** on NFS before writing to it. Anyone may read, but
   writing happens only while holding the lock. This is a convention the
   pipeline code enforces and checks.
-- The lock is a directory inside the directory that it locks (see the "Note"
-  below), recording **who** holds it: the hostname and the process identity
-  (pid, process start time and boot id).
+- The lock is a directory plus metadata, created inside the directory that it
+  locks (see the "Note" below). The metadata records **who** holds it: the
+  hostname and the process identity (pid, process start time and boot id).
 
 Two things must never happen:
 
@@ -31,7 +31,7 @@ Two things must never happen:
   rather than silently overwrite someone else's data. This is the main safety
   property.
 - **Deadlock after a crash.** If a job crashes while holding the lock, the
-  lock file stays behind. The next run of that job must still be able to
+  lock stays behind. The next run of that job must still be able to
   proceed, or the pipeline is stuck forever.
 
 The key fact that makes recovery safe without any coordination: **a given job
@@ -55,13 +55,13 @@ The protocol
 
 ``acquire`` (repeat until it succeeds, or give up after a timeout):
 
-1. If there is no lock file, atomically create it with your
-   ``(host, pid)`` record. If the create fails, someone else won the race.
-2. If there is a lock file whose host is **your** host and whose process is
-   dead, atomically replace it with your record. That's the crash recovery.
+1. If there is no lock, atomically create it with your ``(host, pid)``
+   metadata. If the create fails, someone else won the race.
+2. If there is a lock whose metadata names **your** host and a process that
+   is dead, atomically replace it with your own. That's the crash recovery.
 3. Otherwise someone is working. Wait.
 
-``release``: delete the lock file.
+``release``: remove the lock.
 
 The model
 ---------
@@ -78,9 +78,9 @@ don't interact, so one is enough.
 - **Process state.** Each slot is ``free`` (not running, finished, or
   crashed), ``waiting`` (inside ``acquire``) or ``holding`` (owns the lock and
   may write).
-- **The lock file.** ``rec`` is ``none`` (no lock file), ``live`` (held by a
+- **The lock.** ``rec`` is ``none`` (no lock), ``live`` (held by a
   running process) or ``stale`` (held by a process that crashed). ``owner`` is
-  the host recorded in the file. The difference between ``live`` and
+  the host recorded in the metadata. The difference between ``live`` and
   ``stale`` is only observable from the owner's host.
 - **Transitions.** ``spawn`` starts a run, ``acquire`` takes a free lock or
   recovers a stale one on its own host, ``release`` finishes normally, and
@@ -91,12 +91,12 @@ don't interact, so one is enough.
 - **A0 Same-host liveness check (safety).** Only the recorded host can decide
   that the holder is dead, so only it may recover. This is the guard
   ``owner = host[p]`` in ``acquire``.
-- **A1 Atomic create/replace.** Checking the lock file and writing it happen
-  as one step on NFS (e.g. exclusive create, or ``link()`` + link count
-  check).
+- **A1 Atomic create/replace.** Checking the lock and creating it happen
+  as one step on NFS (``mkdir`` fails if the directory already exists;
+  ``rename`` is atomic).
 - **A2 Processes finish.** A holder eventually releases the lock or crashes.
 - **A3 Processes eventually succeed.** A waiting run eventually gets the lock.
-  Timeouts are left out: a run that gives up never touched the lock file, so
+  Timeouts are left out: a run that gives up never touched the lock, so
   it can't affect safety.
 - **A4 A crashed host comes back.** It keeps starting new runs, so someone is
   there to recover its stale lock.
@@ -245,7 +245,7 @@ Click **Check** to verify it in your browser:
 - ``second_instance_waits`` (safety): if a run starts while another one holds
   the lock, it waits until the holder has released it or crashed. It never
   pushes in.
-- ``record_matches_holder`` (safety): the lock file always names the holder's
+- ``record_matches_holder`` (safety): the lock's metadata always names the holder's
   host, so the liveness check in A0 is asked of the right host.
 - ``crash_recoverable`` (liveness, *no deadlock*): a lock left behind by a
   crash is eventually taken back by a process on the crash host.
