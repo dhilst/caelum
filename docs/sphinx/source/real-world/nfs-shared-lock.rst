@@ -186,36 +186,36 @@ Click **Check** to verify it in your browser:
 
    // A new process starts and calls acquire.
    transition spawn(p ∈ Proc) {
-     st[p] = free ∧
-     st[p]' = waiting ∧
-     unchanged(st except p, rec, owner, host)
+     st[p] = free ∧                              // slot p is empty,
+     st[p]' = waiting ∧                          // a new process starts there and waits for the lock;
+     unchanged(st except p, rec, owner, host)    // nothing else changes
    }
 
    // acquire → ok (atomic CAS, A1): take a free lock (any host), or recover a
    // stale one — only on the owner's host (A0).
    transition acquire(p ∈ Proc) {
-     st[p] = waiting ∧
-     (rec = none ∨ (rec = stale ∧ owner = host[p])) ∧
-     st[p]' = holding ∧
-     rec' = live ∧
-     owner' = host[p] ∧
-     unchanged(st except p, host)
+     st[p] = waiting ∧                                   // p is waiting,
+     (rec = none ∨ (rec = stale ∧ owner = host[p])) ∧    // the lock is free, or stale and owned by p's host:
+     st[p]' = holding ∧                                  // p now holds it,
+     rec' = live ∧                                       // the lock is live
+     owner' = host[p] ∧                                  // and records p's host;
+     unchanged(st except p, host)                        // everyone else is untouched
    }
 
    // The holder finishes and releases the lock.
    transition release(p ∈ Proc) {
-     st[p] = holding ∧
-     st[p]' = free ∧
-     rec' = none ∧
-     unchanged(st except p, owner, host)
+     st[p] = holding ∧                    // p holds the lock,
+     st[p]' = free ∧                      // finishes its work and exits,
+     rec' = none ∧                        // removing the lock;
+     unchanged(st except p, owner, host)  // nothing else changes
    }
 
    // The holder crashes: its record is left behind, stale.
    transition crash(p ∈ Proc) {
-     st[p] = holding ∧
-     st[p]' = free ∧
-     rec' = stale ∧
-     unchanged(st except p, owner, host)
+     st[p] = holding ∧                    // p holds the lock,
+     st[p]' = free ∧                      // dies,
+     rec' = stale ∧                       // leaving the lock behind, stale,
+     unchanged(st except p, owner, host)  // still naming p's host
    }
 
    fairness {
