@@ -55,7 +55,7 @@ The protocol
 
 ``acquire`` (repeat until it succeeds, or give up after a timeout):
 
-1. If there is no lock, atomically create it with your ``(host, pid)``
+1. If there is no lock, atomically create it with your ``(host, pid, boot-id, start_time)``
    metadata. If the create fails, someone else won the race.
 2. If there is a lock whose metadata names **your** host and a process that
    is dead, atomically replace it with your own. That's the crash recovery.
