@@ -297,7 +297,7 @@ be implemented from operations that NFSv4 makes atomic on the server:
 <h2>The protocol<a class="headerlink" href="#the-protocol" title="Link to this heading">¶</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">acquire</span></code> (repeat until it succeeds, or give up after a timeout):</p>
 <ol class="arabic simple">
-<li><p>If there is no lock, atomically create it with your <code class="docutils literal notranslate"><span class="pre">(host,</span> <span class="pre">pid)</span></code>
+<li><p>If there is no lock, atomically create it with your <code class="docutils literal notranslate"><span class="pre">(host,</span> <span class="pre">pid,</span> <span class="pre">boot-id,</span> <span class="pre">start_time)</span></code>
 metadata. If the create fails, someone else won the race.</p></li>
 <li><p>If there is a lock whose metadata names <strong>your</strong> host and a process that
 is dead, atomically replace it with your own. That’s the crash recovery.</p></li>
