@@ -3,25 +3,27 @@ module examples.scratch_lock
 // Distributed locking over a shared scratch space.
 //
 // Concrete case: several hosts mount the same NFS export. Each work w has a
-// lock file in the mount holding (host, pid). This model is the lock of ONE
+// lock in the mount (a directory plus metadata) holding
+// (machine-id, boot-id, pid, start_time). This model is the lock of ONE
 // work w; every process is an instance of w (works don't interact). If q
 // starts while p is running, q must wait.
 //
-// The lock file is the only shared state (no host-to-host messages). Any host
+// The lock is the only shared state (no host-to-host messages). Any host
 // can take a free lock. If the holder crashes its record stays behind, stale.
 //
 // Structure:
 //   H = {local, remote},  P = {0, 1, 2},  host[p] = the host p runs at
 //   local runs pids 0, 1 (same-host recovery race); remote runs pid 2
 //
-// Lock record:  rec ∈ {none, live, stale},  owner = host field of the record.
-// Pids are unique (pid + start time), so only a crash makes a record stale.
+// Lock record:  rec ∈ {none, live, stale},  owner = machine-id in the metadata.
+// A process is identified by (machine-id, boot-id, pid, start_time), which is
+// never reused, so only a crash makes a record stale.
 //
 // Assumptions:
 //   A0 same-host liveness (safety): only the holder's host can see that the
-//      pid is dead (kill(pid, 0)); another host can't tell "crashed" from
-//      "still working". So only the crash host may recover a stale lock —
-//      encoded in the guard of `acquire`.
+//      holder is dead (different boot-id, or pid gone / different start_time);
+//      another host can't tell "crashed" from "still working". So only the
+//      crash host may recover a stale lock — encoded in the guard of `acquire`.
 //   A1 create and recover are atomic (CAS) on the scratch space
 //   A2 processes finish: a holder eventually releases or crashes
 //   A3 processes eventually succeed: a waiter eventually acquires
@@ -30,6 +32,9 @@ module examples.scratch_lock
 //   A4 hosts keep starting processes (a crashed host comes back) — implicit:
 //      there is no idle step, so when everyone waits on a stale lock the
 //      crash host's spawn is the only move
+//   A5 machine-id is unique for each host (environment) — implicit: hosts are
+//      distinct by construction (local ≠ remote). Cloned VMs / templates may
+//      share /etc/machine-id, so this must be checked in production.
 
 type Host = enum { local, remote }
 type Proc = 0..2
@@ -107,7 +112,7 @@ property second_instance_waits {
          ◯ (st[q] = waiting ∨ st[p] = free))
 }
 
-// S3. The lock file names the holder's host.
+// S3. The lock's metadata names the holder's machine.
 property record_matches_holder {
   □ (∀ p ∈ Proc: st[p] = holding → (rec = live ∧ owner = host[p]))
 }
