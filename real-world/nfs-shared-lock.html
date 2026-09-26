@@ -424,36 +424,36 @@ on the crash host is the only possible move.</p>
 
 <span class="c1">// A new process starts and calls acquire.</span>
 <span class="k">transition</span> <span class="n">spawn</span><span class="p">(</span><span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">)</span> <span class="p">{</span>
-  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">free</span> <span class="o">∧</span>
-  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>&#39; <span class="o">=</span> <span class="n">waiting</span> <span class="o">∧</span>
-  <span class="k">unchanged</span><span class="p">(</span><span class="n">st</span> <span class="k">except</span> <span class="n">p</span><span class="p">,</span> <span class="n">rec</span><span class="p">,</span> <span class="n">owner</span><span class="p">,</span> <span class="n">host</span><span class="p">)</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">free</span> <span class="o">∧</span>                              <span class="c1">// slot p is empty,</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>&#39; <span class="o">=</span> <span class="n">waiting</span> <span class="o">∧</span>                          <span class="c1">// a new process starts there and waits for the lock;</span>
+  <span class="k">unchanged</span><span class="p">(</span><span class="n">st</span> <span class="k">except</span> <span class="n">p</span><span class="p">,</span> <span class="n">rec</span><span class="p">,</span> <span class="n">owner</span><span class="p">,</span> <span class="n">host</span><span class="p">)</span>    <span class="c1">// nothing else changes</span>
 <span class="p">}</span>
 
 <span class="c1">// acquire → ok (atomic CAS, A1): take a free lock (any host), or recover a</span>
 <span class="c1">// stale one — only on the owner&#39;s host (A0).</span>
 <span class="k">transition</span> <span class="n">acquire</span><span class="p">(</span><span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">)</span> <span class="p">{</span>
-  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">waiting</span> <span class="o">∧</span>
-  <span class="p">(</span><span class="n">rec</span> <span class="o">=</span> <span class="n">none</span> <span class="o">∨</span> <span class="p">(</span><span class="n">rec</span> <span class="o">=</span> <span class="n">stale</span> <span class="o">∧</span> <span class="n">owner</span> <span class="o">=</span> <span class="n">host</span><span class="p">[</span><span class="n">p</span><span class="p">]))</span> <span class="o">∧</span>
-  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>&#39; <span class="o">=</span> <span class="n">holding</span> <span class="o">∧</span>
-  <span class="n">rec&#39;</span> <span class="o">=</span> <span class="n">live</span> <span class="o">∧</span>
-  <span class="n">owner&#39;</span> <span class="o">=</span> <span class="n">host</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">∧</span>
-  <span class="k">unchanged</span><span class="p">(</span><span class="n">st</span> <span class="k">except</span> <span class="n">p</span><span class="p">,</span> <span class="n">host</span><span class="p">)</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">waiting</span> <span class="o">∧</span>                                   <span class="c1">// p is waiting,</span>
+  <span class="p">(</span><span class="n">rec</span> <span class="o">=</span> <span class="n">none</span> <span class="o">∨</span> <span class="p">(</span><span class="n">rec</span> <span class="o">=</span> <span class="n">stale</span> <span class="o">∧</span> <span class="n">owner</span> <span class="o">=</span> <span class="n">host</span><span class="p">[</span><span class="n">p</span><span class="p">]))</span> <span class="o">∧</span>    <span class="c1">// the lock is free, or stale and owned by p&#39;s host:</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>&#39; <span class="o">=</span> <span class="n">holding</span> <span class="o">∧</span>                                  <span class="c1">// p now holds it,</span>
+  <span class="n">rec&#39;</span> <span class="o">=</span> <span class="n">live</span> <span class="o">∧</span>                                       <span class="c1">// the lock is live</span>
+  <span class="n">owner&#39;</span> <span class="o">=</span> <span class="n">host</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">∧</span>                                  <span class="c1">// and records p&#39;s host;</span>
+  <span class="k">unchanged</span><span class="p">(</span><span class="n">st</span> <span class="k">except</span> <span class="n">p</span><span class="p">,</span> <span class="n">host</span><span class="p">)</span>                        <span class="c1">// everyone else is untouched</span>
 <span class="p">}</span>
 
 <span class="c1">// The holder finishes and releases the lock.</span>
 <span class="k">transition</span> <span class="n">release</span><span class="p">(</span><span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">)</span> <span class="p">{</span>
-  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">holding</span> <span class="o">∧</span>
-  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>&#39; <span class="o">=</span> <span class="n">free</span> <span class="o">∧</span>
-  <span class="n">rec&#39;</span> <span class="o">=</span> <span class="n">none</span> <span class="o">∧</span>
-  <span class="k">unchanged</span><span class="p">(</span><span class="n">st</span> <span class="k">except</span> <span class="n">p</span><span class="p">,</span> <span class="n">owner</span><span class="p">,</span> <span class="n">host</span><span class="p">)</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">holding</span> <span class="o">∧</span>                    <span class="c1">// p holds the lock,</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>&#39; <span class="o">=</span> <span class="n">free</span> <span class="o">∧</span>                      <span class="c1">// finishes its work and exits,</span>
+  <span class="n">rec&#39;</span> <span class="o">=</span> <span class="n">none</span> <span class="o">∧</span>                        <span class="c1">// removing the lock;</span>
+  <span class="k">unchanged</span><span class="p">(</span><span class="n">st</span> <span class="k">except</span> <span class="n">p</span><span class="p">,</span> <span class="n">owner</span><span class="p">,</span> <span class="n">host</span><span class="p">)</span>  <span class="c1">// nothing else changes</span>
 <span class="p">}</span>
 
 <span class="c1">// The holder crashes: its record is left behind, stale.</span>
 <span class="k">transition</span> <span class="n">crash</span><span class="p">(</span><span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">)</span> <span class="p">{</span>
-  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">holding</span> <span class="o">∧</span>
-  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>&#39; <span class="o">=</span> <span class="n">free</span> <span class="o">∧</span>
-  <span class="n">rec&#39;</span> <span class="o">=</span> <span class="n">stale</span> <span class="o">∧</span>
-  <span class="k">unchanged</span><span class="p">(</span><span class="n">st</span> <span class="k">except</span> <span class="n">p</span><span class="p">,</span> <span class="n">owner</span><span class="p">,</span> <span class="n">host</span><span class="p">)</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">holding</span> <span class="o">∧</span>                    <span class="c1">// p holds the lock,</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>&#39; <span class="o">=</span> <span class="n">free</span> <span class="o">∧</span>                      <span class="c1">// dies,</span>
+  <span class="n">rec&#39;</span> <span class="o">=</span> <span class="n">stale</span> <span class="o">∧</span>                       <span class="c1">// leaving the lock behind, stale,</span>
+  <span class="k">unchanged</span><span class="p">(</span><span class="n">st</span> <span class="k">except</span> <span class="n">p</span><span class="p">,</span> <span class="n">owner</span><span class="p">,</span> <span class="n">host</span><span class="p">)</span>  <span class="c1">// still naming p&#39;s host</span>
 <span class="p">}</span>
 
 <span class="k">fairness</span> <span class="p">{</span>
