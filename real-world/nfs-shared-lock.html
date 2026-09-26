@@ -348,9 +348,10 @@ that the holder is dead, so only it may recover. This is the guard
 as one step on NFS (<code class="docutils literal notranslate"><span class="pre">mkdir</span></code> fails if the directory already exists;
 <code class="docutils literal notranslate"><span class="pre">rename</span></code> is atomic).</p></li>
 <li><p><strong>A2 Processes finish.</strong> A holder eventually releases the lock or crashes.</p></li>
-<li><p><strong>A3 Processes eventually succeed.</strong> A waiting run eventually gets the lock.
-Timeouts are left out: a run that gives up never touched the lock, so
-it can’t affect safety.</p></li>
+<li><p><strong>A3 Acquires eventually happen.</strong> An <code class="docutils literal notranslate"><span class="pre">acquire</span></code> that keeps becoming
+possible eventually succeeds, so timeouts can’t win forever. Timeouts are
+left out: a run that gives up never touched the lock, so it can’t affect
+safety.</p></li>
 <li><p><strong>A4 A crashed process comes back.</strong> Its host keeps starting new runs, so
 someone is there to recover its stale lock.</p></li>
 <li><p><strong>A5 Unique machine-id (environment).</strong> <code class="docutils literal notranslate"><span class="pre">/etc/machine-id</span></code> is unique for
@@ -389,9 +390,10 @@ on the crash host is the only possible move.</p>
 <span class="c1">//      crash host may recover a stale lock — encoded in the guard of `acquire`.</span>
 <span class="c1">//   A1 create and recover are atomic (CAS) on the scratch space</span>
 <span class="c1">//   A2 processes finish: a holder eventually releases or crashes</span>
-<span class="c1">//   A3 processes eventually succeed: a waiter eventually acquires</span>
-<span class="c1">//      (a waiter that gives up leaves no trace in the lock, so safety is</span>
-<span class="c1">//       unaffected by dropping timeouts)</span>
+<span class="c1">//   A3 an acquire that keeps becoming possible eventually happens</span>
+<span class="c1">//      (strong fairness: timeouts can&#39;t win forever; a waiter that gives up</span>
+<span class="c1">//       leaves no trace in the lock, so safety is unaffected by dropping</span>
+<span class="c1">//       timeouts)</span>
 <span class="c1">//   A4 a crashed process comes back: its host keeps starting new runs — implicit:</span>
 <span class="c1">//      there is no idle step, so when everyone waits on a stale lock the</span>
 <span class="c1">//      crash host&#39;s spawn is the only move</span>
@@ -490,9 +492,11 @@ on the crash host is the only possible move.</p>
 
 <span class="c1">// ── Liveness: work progresses ───────────────────────────────────────────────</span>
 
-<span class="c1">// L2. Every waiting process eventually gets the lock.</span>
+<span class="c1">// L2. The lock keeps being taken: the pipeline as a whole never stalls.</span>
+<span class="c1">// Per-process progress does NOT hold: a process that keeps crashing and</span>
+<span class="c1">// recovering its own stale lock can starve processes on other hosts.</span>
 <span class="k">property</span> <span class="n">work_progresses</span> <span class="p">{</span>
-  <span class="o">□</span> <span class="p">(</span><span class="o">∀</span> <span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">:</span> <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">waiting</span> <span class="o">→</span> <span class="o">◇</span> <span class="p">(</span><span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">holding</span><span class="p">))</span>
+  <span class="o">□</span> <span class="o">◇</span> <span class="p">(</span><span class="n">lock</span> <span class="o">=</span> <span class="n">locked</span><span class="p">)</span>
 <span class="p">}</span>
 </pre></div>
 </div>
@@ -507,8 +511,17 @@ pushes in.</p></li>
 host, so the liveness check in A0 is asked of the right host.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">crash_recoverable</span></code> (liveness, <em>no deadlock</em>): a lock left behind by a
 crash is eventually taken back by a process on the crash host.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">work_progresses</span></code> (liveness): every waiting run eventually gets the lock.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">work_progresses</span></code> (liveness): the lock keeps being taken, so the pipeline
+as a whole never stalls.</p></li>
 </ul>
+<p><strong>Per-process progress does not hold.</strong> A stronger property, “every waiting
+run eventually gets the lock” (<code class="docutils literal notranslate"><span class="pre">□</span> <span class="pre">(∀</span> <span class="pre">p:</span> <span class="pre">waiting(p)</span> <span class="pre">→</span> <span class="pre">◇</span> <span class="pre">holding(p))</span></code>), is
+false. Caelum finds a fair run in which a process on one host keeps crashing
+and recovering its own stale lock, while processes on the other host wait
+forever: the lock is always either held or stale-and-owned-by-the-other-host,
+so their <code class="docutils literal notranslate"><span class="pre">acquire</span></code> is never even enabled. A crash-looping job can monopolise
+the lock. In practice the waiting jobs time out, and the crash loop itself
+shows up in the pipeline.</p>
 <p><strong>What the model doesn’t cover.</strong> If the crashed process never comes back (A4 is
 false), its stale lock stays forever. No protocol without communication can
 fix this, because another host can’t tell a dead host from a slow one. That
