@@ -22,7 +22,7 @@ export, and jobs read and write there directly. To keep things simple, jobs
   pipeline code enforces and checks.
 - The lock is a directory plus metadata, created inside the directory that it
   locks (see the "Note" below). The metadata records **who** holds it: the
-  machine (``/etc/machine-id``, plus the hostname for humans) and the process
+  machine (``/etc/machine-id``) and the process
   identity (pid, process start time and boot id).
 
 Two things must never happen:
@@ -64,7 +64,7 @@ The protocol
 ``acquire`` (repeat until it succeeds, or give up after a timeout):
 
 1. If there is no lock, atomically create it with your
-   ``(machine-id, hostname, boot-id, pid, start_time)`` metadata. If the create
+   ``(machine-id, boot-id, pid, start_time)`` metadata. If the create
    fails, someone else won the race.
 2. If there is a lock whose ``machine-id`` is **yours** and whose process is
    dead (different ``boot-id``, or the ``pid`` is gone or has a different

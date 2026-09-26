@@ -265,7 +265,7 @@ writing happens only while holding the lock. This is a convention the
 pipeline code enforces and checks.</p></li>
 <li><p>The lock is a directory plus metadata, created inside the directory that it
 locks (see the “Note” below). The metadata records <strong>who</strong> holds it: the
-machine (<code class="docutils literal notranslate"><span class="pre">/etc/machine-id</span></code>, plus the hostname for humans) and the process
+machine (<code class="docutils literal notranslate"><span class="pre">/etc/machine-id</span></code>) and the process
 identity (pid, process start time and boot id).</p></li>
 </ul>
 <p>Two things must never happen:</p>
@@ -307,7 +307,7 @@ manually on every host (A5).</p></li>
 <p><code class="docutils literal notranslate"><span class="pre">acquire</span></code> (repeat until it succeeds, or give up after a timeout):</p>
 <ol class="arabic simple">
 <li><p>If there is no lock, atomically create it with your
-<code class="docutils literal notranslate"><span class="pre">(machine-id,</span> <span class="pre">hostname,</span> <span class="pre">boot-id,</span> <span class="pre">pid,</span> <span class="pre">start_time)</span></code> metadata. If the create
+<code class="docutils literal notranslate"><span class="pre">(machine-id,</span> <span class="pre">boot-id,</span> <span class="pre">pid,</span> <span class="pre">start_time)</span></code> metadata. If the create
 fails, someone else won the race.</p></li>
 <li><p>If there is a lock whose <code class="docutils literal notranslate"><span class="pre">machine-id</span></code> is <strong>yours</strong> and whose process is
 dead (different <code class="docutils literal notranslate"><span class="pre">boot-id</span></code>, or the <code class="docutils literal notranslate"><span class="pre">pid</span></code> is gone or has a different
