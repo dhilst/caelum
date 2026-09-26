@@ -331,9 +331,9 @@ in its own <code class="docutils literal notranslate"><span class="pre">init</sp
 <li><p><strong>Process state.</strong> Each slot is <code class="docutils literal notranslate"><span class="pre">free</span></code> (not running, finished, or
 crashed), <code class="docutils literal notranslate"><span class="pre">waiting</span></code> (inside <code class="docutils literal notranslate"><span class="pre">acquire</span></code>) or <code class="docutils literal notranslate"><span class="pre">holding</span></code> (owns the lock and
 may write).</p></li>
-<li><p><strong>The lock.</strong> <code class="docutils literal notranslate"><span class="pre">rec</span></code> is <code class="docutils literal notranslate"><span class="pre">none</span></code> (no lock), <code class="docutils literal notranslate"><span class="pre">live</span></code> (held by a
+<li><p><strong>The lock.</strong> <code class="docutils literal notranslate"><span class="pre">lock</span></code> is <code class="docutils literal notranslate"><span class="pre">unlocked</span></code> (no lock), <code class="docutils literal notranslate"><span class="pre">locked</span></code> (held by a
 running process) or <code class="docutils literal notranslate"><span class="pre">stale</span></code> (held by a process that crashed). <code class="docutils literal notranslate"><span class="pre">owner</span></code> is
-the host recorded in the metadata. The difference between <code class="docutils literal notranslate"><span class="pre">live</span></code> and
+the host recorded in the metadata. The difference between <code class="docutils literal notranslate"><span class="pre">locked</span></code> and
 <code class="docutils literal notranslate"><span class="pre">stale</span></code> is only observable from the owner’s host.</p></li>
 <li><p><strong>Transitions.</strong> <code class="docutils literal notranslate"><span class="pre">spawn</span></code> starts a run, <code class="docutils literal notranslate"><span class="pre">acquire</span></code> takes a free lock or
 recovers a stale one on its own host, <code class="docutils literal notranslate"><span class="pre">release</span></code> finishes normally, and
@@ -372,15 +372,15 @@ on the crash host is the only possible move.</p>
 <span class="c1">// starts while p is running, q must wait.</span>
 <span class="c1">//</span>
 <span class="c1">// The lock is the only shared state (no host-to-host messages). Any host</span>
-<span class="c1">// can take a free lock. If the holder crashes its record stays behind, stale.</span>
+<span class="c1">// can take a free lock. If the holder crashes its lock stays behind, stale.</span>
 <span class="c1">//</span>
 <span class="c1">// Structure:</span>
 <span class="c1">//   H = {local, remote},  P = {0, 1, 2},  host[p] = the host p runs at</span>
 <span class="c1">//   local runs pids 0, 1 (same-host recovery race); remote runs pid 2</span>
 <span class="c1">//</span>
-<span class="c1">// Lock record:  rec ∈ {none, live, stale},  owner = machine-id in the metadata.</span>
+<span class="c1">// Lock state:  lock ∈ {unlocked, locked, stale},  owner = machine-id in the metadata.</span>
 <span class="c1">// A process is identified by (machine-id, boot-id, pid, start_time), which is</span>
-<span class="c1">// never reused, so only a crash makes a record stale.</span>
+<span class="c1">// never reused, so only a crash makes a lock stale.</span>
 <span class="c1">//</span>
 <span class="c1">// Assumptions:</span>
 <span class="c1">//   A0 same-host liveness (safety): only the holder&#39;s host can see that the</span>
@@ -403,10 +403,10 @@ on the crash host is the only possible move.</p>
 <span class="k">type</span> <span class="n">Proc</span> <span class="o">=</span> <span class="m">0</span><span class="o">..</span><span class="m">2</span>
 
 <span class="k">type</span> <span class="n">PState</span> <span class="o">=</span> <span class="kt">enum</span> <span class="p">{</span> <span class="n">free</span><span class="p">,</span> <span class="n">waiting</span><span class="p">,</span> <span class="n">holding</span> <span class="p">}</span>  <span class="c1">// free = slot empty (never started / done / crashed)</span>
-<span class="k">type</span> <span class="n">Record</span> <span class="o">=</span> <span class="kt">enum</span> <span class="p">{</span> <span class="n">none</span><span class="p">,</span> <span class="n">live</span><span class="p">,</span> <span class="n">stale</span> <span class="p">}</span>
+<span class="k">type</span> <span class="n">Lock</span> <span class="o">=</span> <span class="kt">enum</span> <span class="p">{</span> <span class="n">unlocked</span><span class="p">,</span> <span class="n">locked</span><span class="p">,</span> <span class="n">stale</span> <span class="p">}</span>
 
 <span class="k">let</span> <span class="n">st</span><span class="p">[</span><span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">]</span> <span class="o">∈</span> <span class="n">PState</span>
-<span class="k">let</span> <span class="n">rec</span>   <span class="o">∈</span> <span class="n">Record</span>
+<span class="k">let</span> <span class="n">lock</span>  <span class="o">∈</span> <span class="n">Lock</span>
 <span class="k">let</span> <span class="n">owner</span> <span class="o">∈</span> <span class="n">Host</span>
 <span class="k">let</span> <span class="n">host</span><span class="p">[</span><span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">]</span> <span class="o">∈</span> <span class="n">Host</span>   <span class="c1">// static fact, fixed in init; every transition keeps it unchanged</span>
 
@@ -419,40 +419,40 @@ on the crash host is the only possible move.</p>
 
 <span class="c1">// Initial state: nobody running, no lock.</span>
 <span class="k">init</span> <span class="p">{</span>
-  <span class="p">(</span><span class="o">∀</span> <span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">:</span> <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">free</span><span class="p">)</span> <span class="o">∧</span> <span class="n">rec</span> <span class="o">=</span> <span class="n">none</span> <span class="o">∧</span> <span class="n">owner</span> <span class="o">=</span> <span class="n">local</span>
+  <span class="p">(</span><span class="o">∀</span> <span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">:</span> <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">free</span><span class="p">)</span> <span class="o">∧</span> <span class="n">lock</span> <span class="o">=</span> <span class="n">unlocked</span> <span class="o">∧</span> <span class="n">owner</span> <span class="o">=</span> <span class="n">local</span>
 <span class="p">}</span>
 
 <span class="c1">// A new process starts and calls acquire.</span>
 <span class="k">transition</span> <span class="n">spawn</span><span class="p">(</span><span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">)</span> <span class="p">{</span>
-  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">free</span> <span class="o">∧</span>                              <span class="c1">// slot p is empty,</span>
-  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>&#39; <span class="o">=</span> <span class="n">waiting</span> <span class="o">∧</span>                          <span class="c1">// a new process starts there and waits for the lock;</span>
-  <span class="k">unchanged</span><span class="p">(</span><span class="n">st</span> <span class="k">except</span> <span class="n">p</span><span class="p">,</span> <span class="n">rec</span><span class="p">,</span> <span class="n">owner</span><span class="p">,</span> <span class="n">host</span><span class="p">)</span>    <span class="c1">// nothing else changes</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">free</span> <span class="o">∧</span>                             <span class="c1">// slot p is empty,</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>&#39; <span class="o">=</span> <span class="n">waiting</span> <span class="o">∧</span>                         <span class="c1">// a new process starts there and waits for the lock;</span>
+  <span class="k">unchanged</span><span class="p">(</span><span class="n">st</span> <span class="k">except</span> <span class="n">p</span><span class="p">,</span> <span class="n">lock</span><span class="p">,</span> <span class="n">owner</span><span class="p">,</span> <span class="n">host</span><span class="p">)</span>  <span class="c1">// nothing else changes</span>
 <span class="p">}</span>
 
 <span class="c1">// acquire → ok (atomic CAS, A1): take a free lock (any host), or recover a</span>
 <span class="c1">// stale one — only on the owner&#39;s host (A0).</span>
 <span class="k">transition</span> <span class="n">acquire</span><span class="p">(</span><span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">)</span> <span class="p">{</span>
-  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">waiting</span> <span class="o">∧</span>                                   <span class="c1">// p is waiting,</span>
-  <span class="p">(</span><span class="n">rec</span> <span class="o">=</span> <span class="n">none</span> <span class="o">∨</span> <span class="p">(</span><span class="n">rec</span> <span class="o">=</span> <span class="n">stale</span> <span class="o">∧</span> <span class="n">owner</span> <span class="o">=</span> <span class="n">host</span><span class="p">[</span><span class="n">p</span><span class="p">]))</span> <span class="o">∧</span>    <span class="c1">// the lock is free, or stale and owned by p&#39;s host:</span>
-  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>&#39; <span class="o">=</span> <span class="n">holding</span> <span class="o">∧</span>                                  <span class="c1">// p now holds it,</span>
-  <span class="n">rec&#39;</span> <span class="o">=</span> <span class="n">live</span> <span class="o">∧</span>                                       <span class="c1">// the lock is live</span>
-  <span class="n">owner&#39;</span> <span class="o">=</span> <span class="n">host</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">∧</span>                                  <span class="c1">// and records p&#39;s host;</span>
-  <span class="k">unchanged</span><span class="p">(</span><span class="n">st</span> <span class="k">except</span> <span class="n">p</span><span class="p">,</span> <span class="n">host</span><span class="p">)</span>                        <span class="c1">// everyone else is untouched</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">waiting</span> <span class="o">∧</span>                                       <span class="c1">// p is waiting,</span>
+  <span class="p">(</span><span class="n">lock</span> <span class="o">=</span> <span class="n">unlocked</span> <span class="o">∨</span> <span class="p">(</span><span class="n">lock</span> <span class="o">=</span> <span class="n">stale</span> <span class="o">∧</span> <span class="n">owner</span> <span class="o">=</span> <span class="n">host</span><span class="p">[</span><span class="n">p</span><span class="p">]))</span> <span class="o">∧</span>  <span class="c1">// the lock is free, or stale and owned by p&#39;s host:</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>&#39; <span class="o">=</span> <span class="n">holding</span> <span class="o">∧</span>                                      <span class="c1">// p now holds it,</span>
+  <span class="n">lock&#39;</span> <span class="o">=</span> <span class="n">locked</span> <span class="o">∧</span>                                        <span class="c1">// the lock is taken</span>
+  <span class="n">owner&#39;</span> <span class="o">=</span> <span class="n">host</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">∧</span>                                      <span class="c1">// and records p&#39;s host;</span>
+  <span class="k">unchanged</span><span class="p">(</span><span class="n">st</span> <span class="k">except</span> <span class="n">p</span><span class="p">,</span> <span class="n">host</span><span class="p">)</span>                            <span class="c1">// everyone else is untouched</span>
 <span class="p">}</span>
 
 <span class="c1">// The holder finishes and releases the lock.</span>
 <span class="k">transition</span> <span class="n">release</span><span class="p">(</span><span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">)</span> <span class="p">{</span>
   <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">holding</span> <span class="o">∧</span>                    <span class="c1">// p holds the lock,</span>
   <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>&#39; <span class="o">=</span> <span class="n">free</span> <span class="o">∧</span>                      <span class="c1">// finishes its work and exits,</span>
-  <span class="n">rec&#39;</span> <span class="o">=</span> <span class="n">none</span> <span class="o">∧</span>                        <span class="c1">// removing the lock;</span>
+  <span class="n">lock&#39;</span> <span class="o">=</span> <span class="n">unlocked</span> <span class="o">∧</span>                   <span class="c1">// removing the lock;</span>
   <span class="k">unchanged</span><span class="p">(</span><span class="n">st</span> <span class="k">except</span> <span class="n">p</span><span class="p">,</span> <span class="n">owner</span><span class="p">,</span> <span class="n">host</span><span class="p">)</span>  <span class="c1">// nothing else changes</span>
 <span class="p">}</span>
 
-<span class="c1">// The holder crashes: its record is left behind, stale.</span>
+<span class="c1">// The holder crashes: its lock is left behind, stale.</span>
 <span class="k">transition</span> <span class="n">crash</span><span class="p">(</span><span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">)</span> <span class="p">{</span>
   <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">holding</span> <span class="o">∧</span>                    <span class="c1">// p holds the lock,</span>
   <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>&#39; <span class="o">=</span> <span class="n">free</span> <span class="o">∧</span>                      <span class="c1">// dies,</span>
-  <span class="n">rec&#39;</span> <span class="o">=</span> <span class="n">stale</span> <span class="o">∧</span>                       <span class="c1">// leaving the lock behind, stale,</span>
+  <span class="n">lock&#39;</span> <span class="o">=</span> <span class="n">stale</span> <span class="o">∧</span>                      <span class="c1">// leaving the lock behind, stale,</span>
   <span class="k">unchanged</span><span class="p">(</span><span class="n">st</span> <span class="k">except</span> <span class="n">p</span><span class="p">,</span> <span class="n">owner</span><span class="p">,</span> <span class="n">host</span><span class="p">)</span>  <span class="c1">// still naming p&#39;s host</span>
 <span class="p">}</span>
 
@@ -476,8 +476,8 @@ on the crash host is the only possible move.</p>
 <span class="p">}</span>
 
 <span class="c1">// S3. The lock&#39;s metadata names the holder&#39;s machine.</span>
-<span class="k">property</span> <span class="n">record_matches_holder</span> <span class="p">{</span>
-  <span class="o">□</span> <span class="p">(</span><span class="o">∀</span> <span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">:</span> <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">holding</span> <span class="o">→</span> <span class="p">(</span><span class="n">rec</span> <span class="o">=</span> <span class="n">live</span> <span class="o">∧</span> <span class="n">owner</span> <span class="o">=</span> <span class="n">host</span><span class="p">[</span><span class="n">p</span><span class="p">]))</span>
+<span class="k">property</span> <span class="n">lock_matches_holder</span> <span class="p">{</span>
+  <span class="o">□</span> <span class="p">(</span><span class="o">∀</span> <span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">:</span> <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">holding</span> <span class="o">→</span> <span class="p">(</span><span class="n">lock</span> <span class="o">=</span> <span class="n">locked</span> <span class="o">∧</span> <span class="n">owner</span> <span class="o">=</span> <span class="n">host</span><span class="p">[</span><span class="n">p</span><span class="p">]))</span>
 <span class="p">}</span>
 
 <span class="c1">// ── Liveness: crash is recoverable ──────────────────────────────────────────</span>
@@ -485,7 +485,7 @@ on the crash host is the only possible move.</p>
 <span class="c1">// L1. A crash while holding the lock doesn&#39;t deadlock: the crash host</span>
 <span class="c1">// eventually takes the lock back.</span>
 <span class="k">property</span> <span class="n">crash_recoverable</span> <span class="p">{</span>
-  <span class="o">□</span> <span class="p">(</span><span class="o">∀</span> <span class="n">h</span> <span class="o">∈</span> <span class="n">Host</span><span class="p">:</span> <span class="p">(</span><span class="n">rec</span> <span class="o">=</span> <span class="n">stale</span> <span class="o">∧</span> <span class="n">owner</span> <span class="o">=</span> <span class="n">h</span><span class="p">)</span> <span class="o">→</span> <span class="o">◇</span> <span class="p">(</span><span class="n">rec</span> <span class="o">=</span> <span class="n">live</span> <span class="o">∧</span> <span class="n">owner</span> <span class="o">=</span> <span class="n">h</span><span class="p">))</span>
+  <span class="o">□</span> <span class="p">(</span><span class="o">∀</span> <span class="n">h</span> <span class="o">∈</span> <span class="n">Host</span><span class="p">:</span> <span class="p">(</span><span class="n">lock</span> <span class="o">=</span> <span class="n">stale</span> <span class="o">∧</span> <span class="n">owner</span> <span class="o">=</span> <span class="n">h</span><span class="p">)</span> <span class="o">→</span> <span class="o">◇</span> <span class="p">(</span><span class="n">lock</span> <span class="o">=</span> <span class="n">locked</span> <span class="o">∧</span> <span class="n">owner</span> <span class="o">=</span> <span class="n">h</span><span class="p">))</span>
 <span class="p">}</span>
 
 <span class="c1">// ── Liveness: work progresses ───────────────────────────────────────────────</span>
@@ -503,7 +503,7 @@ holds the lock, across all hosts.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">second_instance_waits</span></code> (safety): if a run starts while another one holds
 the lock, it waits until the holder has released it or crashed. It never
 pushes in.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">record_matches_holder</span></code> (safety): the lock’s metadata always names the holder’s
+<li><p><code class="docutils literal notranslate"><span class="pre">lock_matches_holder</span></code> (safety): the lock’s metadata always names the holder’s
 host, so the liveness check in A0 is asked of the right host.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">crash_recoverable</span></code> (liveness, <em>no deadlock</em>): a lock left behind by a
 crash is eventually taken back by a process on the crash host.</p></li>
