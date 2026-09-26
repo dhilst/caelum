@@ -91,3 +91,10 @@ Where to start
    examples
    cli-reference
    specification
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Real World Examples
+   :glob:
+
+   real-world/*

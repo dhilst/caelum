@@ -1,0 +1,551 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="prev" title="Full Specification" href="../specification.html">
+
+    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>NFS Shared Lock - Caelum</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../index.html"><div class="brand">Caelum</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../index.html">
+  
+  <span class="sidebar-brand-text">Caelum</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Learn Caelum</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../when-to-use.html">What Caelum Is For</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../using-the-editor.html">Trying Caelum in Your Browser</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../tutorial.html">Tutorial: A Traffic-Light Controller</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../playground.html">Playground</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../language-guide.html">Language Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../cli-reference.html">Command-Line Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../specification.html">Full Specification</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Real World Examples</span></p>
+<ul class="current">
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">NFS Shared Lock</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../_sources/real-world/nfs-shared-lock.rst.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="nfs-shared-lock">
+<h1>NFS Shared Lock<a class="headerlink" href="#nfs-shared-lock" title="Link to this heading">¶</a></h1>
+<p>This example comes from a real data pipeline. It shows how to use Caelum to
+convince yourself that a small, coordination-free locking protocol can’t
+corrupt data and can’t get stuck.</p>
+<section id="the-problem">
+<h2>The problem<a class="headerlink" href="#the-problem" title="Link to this heading">¶</a></h2>
+<p>A large pipeline runs its jobs on several machines. The jobs produce huge
+amounts of data, and copying that data between machines is too expensive.
+The machine that produces a dataset is not the one that validates it, and
+validation may write new files next to the data it checks.</p>
+<p>The solution is a <strong>shared scratch space</strong>: every machine mounts the same NFS
+export, and jobs read and write there directly. To keep things simple, jobs
+<strong>don’t talk to each other</strong> and there is no central coordinator. Instead:</p>
+<ul class="simple">
+<li><p>A job <strong>locks a directory</strong> on NFS before writing to it. Anyone may read, but
+writing happens only while holding the lock. This is a convention the
+pipeline code enforces and checks.</p></li>
+<li><p>The lock is a file in the directory recording <strong>who</strong> holds it: the
+hostname and the process identity (pid, process start time and boot id).</p></li>
+</ul>
+<p>Two things must never happen:</p>
+<ul class="simple">
+<li><p><strong>Data corruption.</strong> Two runs must never write the same directory at once.
+If a bug makes a job try, it should <strong>fail loudly</strong> (wait or time out)
+rather than silently overwrite someone else’s data. This is the main safety
+property.</p></li>
+<li><p><strong>Deadlock after a crash.</strong> If a job crashes while holding the lock, the
+lock file stays behind. The next run of that job must still be able to
+proceed, or the pipeline is stuck forever.</p></li>
+</ul>
+<p>The key fact that makes recovery safe without any coordination: <strong>a given job
+always runs on the same host.</strong> A host can tell for certain whether one of its
+own processes is dead, by checking that the recorded pid no longer exists, or
+that it now belongs to a different process (different start time or boot id).
+So when the next run finds a lock left by a dead process <em>on its own host</em>, it
+can take the lock over. A process on <em>another</em> host can’t make that check: to
+it, a crashed holder and a slow holder look the same, so it must never take
+the lock over. It can only wait.</p>
+</section>
+<section id="the-protocol">
+<h2>The protocol<a class="headerlink" href="#the-protocol" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">acquire</span></code> (repeat until it succeeds, or give up after a timeout):</p>
+<ol class="arabic simple">
+<li><p>If there is no lock file, atomically create it with your
+<code class="docutils literal notranslate"><span class="pre">(host,</span> <span class="pre">pid)</span></code> record. If the create fails, someone else won the race.</p></li>
+<li><p>If there is a lock file whose host is <strong>your</strong> host and whose process is
+dead, atomically replace it with your record. That’s the crash recovery.</p></li>
+<li><p>Otherwise someone is working. Wait.</p></li>
+</ol>
+<p><code class="docutils literal notranslate"><span class="pre">release</span></code>: delete the lock file.</p>
+</section>
+<section id="the-model">
+<h2>The model<a class="headerlink" href="#the-model" title="Link to this heading">¶</a></h2>
+<p>The spec below models the lock of <strong>one</strong> directory: every process in it is a
+run of the same job that wants that directory. Locks on different directories
+don’t interact, so one is enough.</p>
+<ul class="simple">
+<li><p><strong>Hosts and processes.</strong> Two hosts, three process slots. Host 0 has two
+slots, so two runs on the same host can race to recover a crashed lock;
+host 1 has one slot and plays the “other host”. <code class="docutils literal notranslate"><span class="pre">host(p)</span> <span class="pre">=</span> <span class="pre">p</span> <span class="pre">/</span> <span class="pre">2</span></code>.</p></li>
+<li><p><strong>Process state.</strong> Each slot is <code class="docutils literal notranslate"><span class="pre">free</span></code> (not running, finished, or
+crashed), <code class="docutils literal notranslate"><span class="pre">waiting</span></code> (inside <code class="docutils literal notranslate"><span class="pre">acquire</span></code>) or <code class="docutils literal notranslate"><span class="pre">holding</span></code> (owns the lock and
+may write).</p></li>
+<li><p><strong>The lock file.</strong> <code class="docutils literal notranslate"><span class="pre">rec</span></code> is <code class="docutils literal notranslate"><span class="pre">none</span></code> (no lock file), <code class="docutils literal notranslate"><span class="pre">live</span></code> (held by a
+running process) or <code class="docutils literal notranslate"><span class="pre">stale</span></code> (held by a process that crashed). <code class="docutils literal notranslate"><span class="pre">owner</span></code> is
+the host recorded in the file. The difference between <code class="docutils literal notranslate"><span class="pre">live</span></code> and
+<code class="docutils literal notranslate"><span class="pre">stale</span></code> is only observable from the owner’s host.</p></li>
+<li><p><strong>Transitions.</strong> <code class="docutils literal notranslate"><span class="pre">spawn</span></code> starts a run, <code class="docutils literal notranslate"><span class="pre">acquire</span></code> takes a free lock or
+recovers a stale one on its own host, <code class="docutils literal notranslate"><span class="pre">release</span></code> finishes normally, and
+<code class="docutils literal notranslate"><span class="pre">crash</span></code> dies while holding the lock, leaving a stale record.</p></li>
+</ul>
+<p><strong>Assumptions</strong> are what the protocol relies on from the environment:</p>
+<ul class="simple">
+<li><p><strong>A0 Same-host liveness check (safety).</strong> Only the recorded host can decide
+that the holder is dead, so only it may recover. This is the guard
+<code class="docutils literal notranslate"><span class="pre">owner</span> <span class="pre">=</span> <span class="pre">p</span> <span class="pre">/</span> <span class="pre">2</span></code> in <code class="docutils literal notranslate"><span class="pre">acquire</span></code>.</p></li>
+<li><p><strong>A1 Atomic create/replace.</strong> Checking the lock file and writing it happen
+as one step on NFS (e.g. exclusive create, or <code class="docutils literal notranslate"><span class="pre">link()</span></code> + link count
+check).</p></li>
+<li><p><strong>A2 Processes finish.</strong> A holder eventually releases the lock or crashes.</p></li>
+<li><p><strong>A3 Processes eventually succeed.</strong> A waiting run eventually gets the lock.
+Timeouts are left out: a run that gives up never touched the lock file, so
+it can’t affect safety.</p></li>
+<li><p><strong>A4 A crashed host comes back.</strong> It keeps starting new runs, so someone is
+there to recover its stale lock.</p></li>
+</ul>
+<p>A2 and A3 are the <code class="docutils literal notranslate"><span class="pre">fairness</span></code> block. A4 needs no declaration: the model has
+no idle step, so when everyone is waiting on a stale lock, starting a new run
+on the crash host is the only possible move.</p>
+<p>Click <strong>Check</strong> to verify it in your browser:</p>
+<div class="highlight-lum notranslate"><div class="highlight"><pre><span></span><span class="k">module</span> <span class="n">examples</span><span class="p">.</span><span class="n">scratch_lock</span>
+
+<span class="c1">// Distributed locking over a shared scratch space.</span>
+<span class="c1">//</span>
+<span class="c1">// Concrete case: several hosts mount the same NFS export. Each work w has a</span>
+<span class="c1">// lock file in the mount holding (host, pid). This model is the lock of ONE</span>
+<span class="c1">// work w; every process is an instance of w (works don&#39;t interact). If q</span>
+<span class="c1">// starts while p is running, q must wait.</span>
+<span class="c1">//</span>
+<span class="c1">// The lock file is the only shared state (no host-to-host messages). Any host</span>
+<span class="c1">// can take a free lock. If the holder crashes its record stays behind, stale.</span>
+<span class="c1">//</span>
+<span class="c1">// Structure:</span>
+<span class="c1">//   H = {0, 1},  P = {0, 1, 2},  host(p) = p / 2</span>
+<span class="c1">//   host 0 runs pids 0, 1 (same-host recovery race); host 1 runs pid 2 (remote)</span>
+<span class="c1">//</span>
+<span class="c1">// Lock record:  rec ∈ {none, live, stale},  owner = host field of the record.</span>
+<span class="c1">// Pids are unique (pid + start time), so only a crash makes a record stale.</span>
+<span class="c1">//</span>
+<span class="c1">// Assumptions:</span>
+<span class="c1">//   A0 same-host liveness (safety): only the holder&#39;s host can see that the</span>
+<span class="c1">//      pid is dead (kill(pid, 0)); another host can&#39;t tell &quot;crashed&quot; from</span>
+<span class="c1">//      &quot;still working&quot;. So only the crash host may recover a stale lock —</span>
+<span class="c1">//      encoded in the guard of `acquire`.</span>
+<span class="c1">//   A1 create and recover are atomic (CAS) on the scratch space</span>
+<span class="c1">//   A2 processes finish: a holder eventually releases or crashes</span>
+<span class="c1">//   A3 processes eventually succeed: a waiter eventually acquires</span>
+<span class="c1">//      (a waiter that gives up leaves no trace in the lock, so safety is</span>
+<span class="c1">//       unaffected by dropping timeouts)</span>
+<span class="c1">//   A4 hosts keep starting processes (a crashed host comes back) — implicit:</span>
+<span class="c1">//      there is no idle step, so when everyone waits on a stale lock the</span>
+<span class="c1">//      crash host&#39;s spawn is the only move</span>
+
+<span class="k">type</span> <span class="n">Host</span> <span class="o">=</span> <span class="m">0</span><span class="o">..</span><span class="m">1</span>
+<span class="k">type</span> <span class="n">Proc</span> <span class="o">=</span> <span class="m">0</span><span class="o">..</span><span class="m">2</span>
+
+<span class="k">type</span> <span class="n">PState</span> <span class="o">=</span> <span class="kt">enum</span> <span class="p">{</span> <span class="n">free</span><span class="p">,</span> <span class="n">waiting</span><span class="p">,</span> <span class="n">holding</span> <span class="p">}</span>  <span class="c1">// free = slot empty (never started / done / crashed)</span>
+<span class="k">type</span> <span class="n">Record</span> <span class="o">=</span> <span class="kt">enum</span> <span class="p">{</span> <span class="n">none</span><span class="p">,</span> <span class="n">live</span><span class="p">,</span> <span class="n">stale</span> <span class="p">}</span>
+
+<span class="k">let</span> <span class="n">st</span><span class="p">[</span><span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">]</span> <span class="o">∈</span> <span class="n">PState</span>
+<span class="k">let</span> <span class="n">rec</span>   <span class="o">∈</span> <span class="n">Record</span>
+<span class="k">let</span> <span class="n">owner</span> <span class="o">∈</span> <span class="n">Host</span>
+
+<span class="k">init</span> <span class="p">{</span>
+  <span class="p">(</span><span class="o">∀</span> <span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">:</span> <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">free</span><span class="p">)</span> <span class="o">∧</span> <span class="n">rec</span> <span class="o">=</span> <span class="n">none</span> <span class="o">∧</span> <span class="n">owner</span> <span class="o">=</span> <span class="m">0</span>
+<span class="p">}</span>
+
+<span class="c1">// A new process starts and calls acquire.</span>
+<span class="k">transition</span> <span class="n">spawn</span><span class="p">(</span><span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">free</span> <span class="o">∧</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>&#39; <span class="o">=</span> <span class="n">waiting</span> <span class="o">∧</span>
+  <span class="k">unchanged</span><span class="p">(</span><span class="n">st</span> <span class="k">except</span> <span class="n">p</span><span class="p">,</span> <span class="n">rec</span><span class="p">,</span> <span class="n">owner</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="c1">// acquire → ok (atomic CAS, A1): take a free lock (any host), or recover a</span>
+<span class="c1">// stale one — only on the owner&#39;s host (A0).</span>
+<span class="k">transition</span> <span class="n">acquire</span><span class="p">(</span><span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">waiting</span> <span class="o">∧</span>
+  <span class="p">(</span><span class="n">rec</span> <span class="o">=</span> <span class="n">none</span> <span class="o">∨</span> <span class="p">(</span><span class="n">rec</span> <span class="o">=</span> <span class="n">stale</span> <span class="o">∧</span> <span class="n">owner</span> <span class="o">=</span> <span class="n">p</span> <span class="o">/</span> <span class="m">2</span><span class="p">))</span> <span class="o">∧</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>&#39; <span class="o">=</span> <span class="n">holding</span> <span class="o">∧</span>
+  <span class="n">rec&#39;</span> <span class="o">=</span> <span class="n">live</span> <span class="o">∧</span>
+  <span class="n">owner&#39;</span> <span class="o">=</span> <span class="n">p</span> <span class="o">/</span> <span class="m">2</span> <span class="o">∧</span>
+  <span class="k">unchanged</span><span class="p">(</span><span class="n">st</span> <span class="k">except</span> <span class="n">p</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="c1">// The holder finishes and releases the lock.</span>
+<span class="k">transition</span> <span class="n">release</span><span class="p">(</span><span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">holding</span> <span class="o">∧</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>&#39; <span class="o">=</span> <span class="n">free</span> <span class="o">∧</span>
+  <span class="n">rec&#39;</span> <span class="o">=</span> <span class="n">none</span> <span class="o">∧</span>
+  <span class="k">unchanged</span><span class="p">(</span><span class="n">st</span> <span class="k">except</span> <span class="n">p</span><span class="p">,</span> <span class="n">owner</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="c1">// The holder crashes: its record is left behind, stale.</span>
+<span class="k">transition</span> <span class="n">crash</span><span class="p">(</span><span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">holding</span> <span class="o">∧</span>
+  <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>&#39; <span class="o">=</span> <span class="n">free</span> <span class="o">∧</span>
+  <span class="n">rec&#39;</span> <span class="o">=</span> <span class="n">stale</span> <span class="o">∧</span>
+  <span class="k">unchanged</span><span class="p">(</span><span class="n">st</span> <span class="k">except</span> <span class="n">p</span><span class="p">,</span> <span class="n">owner</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="k">fairness</span> <span class="p">{</span>
+  <span class="k">weak</span>   <span class="n">release</span>           <span class="c1">// A2 (a crash also ends the holder)</span>
+  <span class="k">strong</span> <span class="n">acquire</span>           <span class="c1">// A3</span>
+<span class="p">}</span>
+
+<span class="c1">// ── Safety: no data races ───────────────────────────────────────────────────</span>
+
+<span class="c1">// S1. At most one process holds the lock.</span>
+<span class="k">property</span> <span class="n">mutual_exclusion</span> <span class="p">{</span>
+  <span class="o">□</span> <span class="p">(</span><span class="o">∀</span> <span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">:</span> <span class="o">∀</span> <span class="n">q</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">:</span> <span class="p">(</span><span class="n">p</span> <span class="o">≠</span> <span class="n">q</span> <span class="o">∧</span> <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">holding</span><span class="p">)</span> <span class="o">→</span> <span class="n">st</span><span class="p">[</span><span class="n">q</span><span class="p">]</span> <span class="o">≠</span> <span class="n">holding</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="c1">// S2. If q starts while p holds the lock, q waits until p is gone.</span>
+<span class="k">property</span> <span class="n">second_instance_waits</span> <span class="p">{</span>
+  <span class="o">□</span> <span class="p">(</span><span class="o">∀</span> <span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">:</span> <span class="o">∀</span> <span class="n">q</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">:</span>
+       <span class="p">(</span><span class="n">p</span> <span class="o">≠</span> <span class="n">q</span> <span class="o">∧</span> <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">holding</span> <span class="o">∧</span> <span class="n">st</span><span class="p">[</span><span class="n">q</span><span class="p">]</span> <span class="o">=</span> <span class="n">waiting</span><span class="p">)</span> <span class="o">→</span>
+         <span class="o">◯</span> <span class="p">(</span><span class="n">st</span><span class="p">[</span><span class="n">q</span><span class="p">]</span> <span class="o">=</span> <span class="n">waiting</span> <span class="o">∨</span> <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">free</span><span class="p">))</span>
+<span class="p">}</span>
+
+<span class="c1">// S3. The lock file names the holder&#39;s host.</span>
+<span class="k">property</span> <span class="n">record_matches_holder</span> <span class="p">{</span>
+  <span class="o">□</span> <span class="p">(</span><span class="o">∀</span> <span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">:</span> <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">holding</span> <span class="o">→</span> <span class="p">(</span><span class="n">rec</span> <span class="o">=</span> <span class="n">live</span> <span class="o">∧</span> <span class="n">owner</span> <span class="o">=</span> <span class="n">p</span> <span class="o">/</span> <span class="m">2</span><span class="p">))</span>
+<span class="p">}</span>
+
+<span class="c1">// ── Liveness: crash is recoverable ──────────────────────────────────────────</span>
+
+<span class="c1">// L1. A crash while holding the lock doesn&#39;t deadlock: the crash host</span>
+<span class="c1">// eventually takes the lock back.</span>
+<span class="k">property</span> <span class="n">crash_recoverable</span> <span class="p">{</span>
+  <span class="o">□</span> <span class="p">(</span><span class="o">∀</span> <span class="n">h</span> <span class="o">∈</span> <span class="n">Host</span><span class="p">:</span> <span class="p">(</span><span class="n">rec</span> <span class="o">=</span> <span class="n">stale</span> <span class="o">∧</span> <span class="n">owner</span> <span class="o">=</span> <span class="n">h</span><span class="p">)</span> <span class="o">→</span> <span class="o">◇</span> <span class="p">(</span><span class="n">rec</span> <span class="o">=</span> <span class="n">live</span> <span class="o">∧</span> <span class="n">owner</span> <span class="o">=</span> <span class="n">h</span><span class="p">))</span>
+<span class="p">}</span>
+
+<span class="c1">// ── Liveness: work progresses ───────────────────────────────────────────────</span>
+
+<span class="c1">// L2. Every waiting process eventually gets the lock.</span>
+<span class="k">property</span> <span class="n">work_progresses</span> <span class="p">{</span>
+  <span class="o">□</span> <span class="p">(</span><span class="o">∀</span> <span class="n">p</span> <span class="o">∈</span> <span class="n">Proc</span><span class="p">:</span> <span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">waiting</span> <span class="o">→</span> <span class="o">◇</span> <span class="p">(</span><span class="n">st</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">holding</span><span class="p">))</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Properties:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">mutual_exclusion</span></code> (safety, <em>no data corruption</em>): at most one process
+holds the lock, across all hosts.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">second_instance_waits</span></code> (safety): if a run starts while another one holds
+the lock, it waits until the holder has released it or crashed. It never
+pushes in.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">record_matches_holder</span></code> (safety): the lock file always names the holder’s
+host, so the liveness check in A0 is asked of the right host.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">crash_recoverable</span></code> (liveness, <em>no deadlock</em>): a lock left behind by a
+crash is eventually taken back by a process on the crash host.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">work_progresses</span></code> (liveness): every waiting run eventually gets the lock.</p></li>
+</ul>
+<p><strong>What the model doesn’t cover.</strong> If the crash host never comes back (A4 is
+false), its stale lock stays forever. No protocol without communication can
+fix this, because another host can’t tell a dead host from a slow one. That
+case needs an operator to remove the lock by hand. The model also assumes
+that jobs honour the write-only-under-lock convention; that part is enforced
+in the pipeline code, not by the lock.</p>
+<p>See <code class="docutils literal notranslate"><span class="pre">examples/scratch_lock/scratch_lock.lum</span></code> in the repository for the spec file.</p>
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          <a class="prev-page" href="../specification.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Full Specification</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2025, Daniel Hilst
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">NFS Shared Lock</a><ul>
+<li><a class="reference internal" href="#the-problem">The problem</a></li>
+<li><a class="reference internal" href="#the-protocol">The protocol</a></li>
+<li><a class="reference internal" href="#the-model">The model</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script type="module" src="../_static/caelum-init.js?v=271f9e15"></script>
+    </body>
+</html>
