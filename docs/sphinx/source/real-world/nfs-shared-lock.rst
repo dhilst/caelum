@@ -89,9 +89,9 @@ don't interact, so one is enough.
 - **Process state.** Each slot is ``free`` (not running, finished, or
   crashed), ``waiting`` (inside ``acquire``) or ``holding`` (owns the lock and
   may write).
-- **The lock.** ``rec`` is ``none`` (no lock), ``live`` (held by a
+- **The lock.** ``lock`` is ``unlocked`` (no lock), ``locked`` (held by a
   running process) or ``stale`` (held by a process that crashed). ``owner`` is
-  the host recorded in the metadata. The difference between ``live`` and
+  the host recorded in the metadata. The difference between ``locked`` and
   ``stale`` is only observable from the owner's host.
 - **Transitions.** ``spawn`` starts a run, ``acquire`` takes a free lock or
   recovers a stale one on its own host, ``release`` finishes normally, and
@@ -134,15 +134,15 @@ Click **Check** to verify it in your browser:
    // starts while p is running, q must wait.
    //
    // The lock is the only shared state (no host-to-host messages). Any host
-   // can take a free lock. If the holder crashes its record stays behind, stale.
+   // can take a free lock. If the holder crashes its lock stays behind, stale.
    //
    // Structure:
    //   H = {local, remote},  P = {0, 1, 2},  host[p] = the host p runs at
    //   local runs pids 0, 1 (same-host recovery race); remote runs pid 2
    //
-   // Lock record:  rec ∈ {none, live, stale},  owner = machine-id in the metadata.
+   // Lock state:  lock ∈ {unlocked, locked, stale},  owner = machine-id in the metadata.
    // A process is identified by (machine-id, boot-id, pid, start_time), which is
-   // never reused, so only a crash makes a record stale.
+   // never reused, so only a crash makes a lock stale.
    //
    // Assumptions:
    //   A0 same-host liveness (safety): only the holder's host can see that the
@@ -165,10 +165,10 @@ Click **Check** to verify it in your browser:
    type Proc = 0..2
 
    type PState = enum { free, waiting, holding }  // free = slot empty (never started / done / crashed)
-   type Record = enum { none, live, stale }
+   type Lock = enum { unlocked, locked, stale }
 
    let st[p ∈ Proc] ∈ PState
-   let rec   ∈ Record
+   let lock  ∈ Lock
    let owner ∈ Host
    let host[p ∈ Proc] ∈ Host   // static fact, fixed in init; every transition keeps it unchanged
 
@@ -181,40 +181,40 @@ Click **Check** to verify it in your browser:
 
    // Initial state: nobody running, no lock.
    init {
-     (∀ p ∈ Proc: st[p] = free) ∧ rec = none ∧ owner = local
+     (∀ p ∈ Proc: st[p] = free) ∧ lock = unlocked ∧ owner = local
    }
 
    // A new process starts and calls acquire.
    transition spawn(p ∈ Proc) {
-     st[p] = free ∧                              // slot p is empty,
-     st[p]' = waiting ∧                          // a new process starts there and waits for the lock;
-     unchanged(st except p, rec, owner, host)    // nothing else changes
+     st[p] = free ∧                             // slot p is empty,
+     st[p]' = waiting ∧                         // a new process starts there and waits for the lock;
+     unchanged(st except p, lock, owner, host)  // nothing else changes
    }
 
    // acquire → ok (atomic CAS, A1): take a free lock (any host), or recover a
    // stale one — only on the owner's host (A0).
    transition acquire(p ∈ Proc) {
-     st[p] = waiting ∧                                   // p is waiting,
-     (rec = none ∨ (rec = stale ∧ owner = host[p])) ∧    // the lock is free, or stale and owned by p's host:
-     st[p]' = holding ∧                                  // p now holds it,
-     rec' = live ∧                                       // the lock is live
-     owner' = host[p] ∧                                  // and records p's host;
-     unchanged(st except p, host)                        // everyone else is untouched
+     st[p] = waiting ∧                                       // p is waiting,
+     (lock = unlocked ∨ (lock = stale ∧ owner = host[p])) ∧  // the lock is free, or stale and owned by p's host:
+     st[p]' = holding ∧                                      // p now holds it,
+     lock' = locked ∧                                        // the lock is taken
+     owner' = host[p] ∧                                      // and records p's host;
+     unchanged(st except p, host)                            // everyone else is untouched
    }
 
    // The holder finishes and releases the lock.
    transition release(p ∈ Proc) {
      st[p] = holding ∧                    // p holds the lock,
      st[p]' = free ∧                      // finishes its work and exits,
-     rec' = none ∧                        // removing the lock;
+     lock' = unlocked ∧                   // removing the lock;
      unchanged(st except p, owner, host)  // nothing else changes
    }
 
-   // The holder crashes: its record is left behind, stale.
+   // The holder crashes: its lock is left behind, stale.
    transition crash(p ∈ Proc) {
      st[p] = holding ∧                    // p holds the lock,
      st[p]' = free ∧                      // dies,
-     rec' = stale ∧                       // leaving the lock behind, stale,
+     lock' = stale ∧                      // leaving the lock behind, stale,
      unchanged(st except p, owner, host)  // still naming p's host
    }
 
@@ -238,8 +238,8 @@ Click **Check** to verify it in your browser:
    }
 
    // S3. The lock's metadata names the holder's machine.
-   property record_matches_holder {
-     □ (∀ p ∈ Proc: st[p] = holding → (rec = live ∧ owner = host[p]))
+   property lock_matches_holder {
+     □ (∀ p ∈ Proc: st[p] = holding → (lock = locked ∧ owner = host[p]))
    }
 
    // ── Liveness: crash is recoverable ──────────────────────────────────────────
@@ -247,7 +247,7 @@ Click **Check** to verify it in your browser:
    // L1. A crash while holding the lock doesn't deadlock: the crash host
    // eventually takes the lock back.
    property crash_recoverable {
-     □ (∀ h ∈ Host: (rec = stale ∧ owner = h) → ◇ (rec = live ∧ owner = h))
+     □ (∀ h ∈ Host: (lock = stale ∧ owner = h) → ◇ (lock = locked ∧ owner = h))
    }
 
    // ── Liveness: work progresses ───────────────────────────────────────────────
@@ -264,7 +264,7 @@ Click **Check** to verify it in your browser:
 - ``second_instance_waits`` (safety): if a run starts while another one holds
   the lock, it waits until the holder has released it or crashed. It never
   pushes in.
-- ``record_matches_holder`` (safety): the lock's metadata always names the holder's
+- ``lock_matches_holder`` (safety): the lock's metadata always names the holder's
   host, so the liveness check in A0 is asked of the right host.
 - ``crash_recoverable`` (liveness, *no deadlock*): a lock left behind by a
   crash is eventually taken back by a process on the crash host.
