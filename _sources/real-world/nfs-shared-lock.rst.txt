@@ -20,8 +20,9 @@ export, and jobs read and write there directly. To keep things simple, jobs
 - A job **locks a directory** on NFS before writing to it. Anyone may read, but
   writing happens only while holding the lock. This is a convention the
   pipeline code enforces and checks.
-- The lock is a file in the directory recording **who** holds it: the
-  hostname and the process identity (pid, process start time and boot id).
+- The lock is a directory inside the directory that it locks (see the "Note"
+  below), recording **who** holds it: the hostname and the process identity
+  (pid, process start time and boot id).
 
 Two things must never happen:
 
