@@ -205,8 +205,10 @@ A named transition applies the constraint to every instance a parameterized
 transition expands into (``node_powers_on(n1)``, ``node_powers_on(n2)``, …), so
 "weak ``node_powers_on``" means *every* node eventually powers on. Fairness
 restricts only the infinite paths considered for liveness; it never affects
-safety (``□``) properties. The explicit engine *proves* fair liveness; the BMC
-engine *refutes* it (finds fair counterexamples up to the search depth).
+safety (``□``) properties. The default BMC engine *refutes* fair liveness
+(finds fair counterexamples up to the search depth) and accepts liveness in the
+forms ``◇ φ`` and ``□ ◇ φ``; ``--engine explicit`` *proves* it and also accepts
+nested forms such as ``□ (a → ◇ b)``.
 
 Operators
 ---------

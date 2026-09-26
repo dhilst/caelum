@@ -120,10 +120,11 @@ property lock_matches_holder {
 
 // ── Liveness: crash is recoverable ──────────────────────────────────────────
 
-// L1. A crash while holding the lock doesn't deadlock: the crash host
-// eventually takes the lock back.
+// L1. A crash while holding the lock doesn't deadlock: the lock is never
+// stale forever. (Only the crash host can recover it, by the guard of
+// `acquire`, so it is the crash host that takes it back.)
 property crash_recoverable {
-  □ (∀ h ∈ Host: (lock = stale ∧ owner = h) → ◇ (lock = locked ∧ owner = h))
+  □ ◇ (lock ≠ stale)
 }
 
 // ── Liveness: work progresses ───────────────────────────────────────────────

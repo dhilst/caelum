@@ -182,7 +182,7 @@ function renderResult(pane, report) {
   const failed = props.filter((p) => p.status === "fail");
   if (report.status === "pass") {
     pane.classList.add("caelum-result-ok");
-    pane.appendChild(el("div", null, "✓ all " + props.length + " " + plural(props.length, "property", "properties") + " hold"));
+    pane.appendChild(el("div", null, "✓ no violation found in " + props.length + " " + plural(props.length, "property", "properties")));
   } else {
     pane.classList.add("caelum-result-error");
     pane.appendChild(el("div", null, "✗ " + failed.length + " of " + props.length + " " + plural(props.length, "property", "properties") + " failed"));

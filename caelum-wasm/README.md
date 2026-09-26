@@ -6,7 +6,8 @@ WebAssembly bindings for the Caelum LTL model checker.
 
 - `check_spec(source, optsJson) -> reportJson` — synchronous, using the
   pure-Rust **varisat** backend compiled into the module. `optsJson`:
-  `{ "engine": "explicit"|"bmc", "bmc_depth": u, "prove": bool, "max_states": u }`.
+  `{ "engine": "bmc"|"explicit", "bmc_depth": u, "prove": bool, "max_states": u }`
+  (defaults: `bmc`, depth 50, `prove: true`).
 - `check_spec_multi(filesJson, root, optsJson) -> reportJson` — same, for a
   multi-file spec (`filesJson` maps module id → source; `root` is the entry).
 - `check_spec_z3(source, optsJson, solveFn) -> Promise<reportJson>` —

@@ -25,9 +25,14 @@ Cargo workspace with three crates:
 - `cargo test -p caelum-cli --features smtlib` — test the SMT-LIB2 path against the `z3` binary
 - `wasm-pack build caelum-wasm --target web` — build the wasm module
 
-## Solver backends (BMC engine)
+## Engines and solver backends
 
-`--solver z3` (default, native libz3) · `varisat` (pure Rust, wasm-viable) ·
+Default engine is `--engine bmc` with k-induction on (`--no-prove` to disable):
+proves safety, refutes liveness up to `--bmc-depth` (50; the browser uses 20).
+BMC accepts liveness only as `◇ φ` / `□ ◇ φ`. `--engine explicit` enumerates
+every reachable state and proves liveness too, on small models.
+
+`--solver varisat` (default, pure Rust, wasm-viable) · `z3` (native libz3) ·
 `cadical` · `smtlib` (emits SMT-LIB2 to the external `z3` binary; feature-gated).
 In the browser, `caelum-wasm` uses varisat in-module or offloads SMT-LIB2 to
 z3.js.
@@ -36,7 +41,8 @@ z3.js.
 
 - CI harness binary at `ci/src/main.rs` — run with `cargo run --manifest-path ci/Cargo.toml`
 - Runs `cargo test` and all `examples/**/*.lum` files in parallel (threadpool sized to CPU count)
-- Each process has a 60s timeout; exits 0 only if all tests and examples pass
+- Examples run on a release build (`target/release/caelum`); each process has a
+  60s timeout; exits 0 only if all tests and examples pass
 - Pre-push hook (`git push`) invokes the harness automatically
 - GitHub Actions CI runs the harness on pull requests
 

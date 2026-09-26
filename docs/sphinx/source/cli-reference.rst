@@ -143,16 +143,21 @@ Options
      - Description
    * - ``--format human|json``
      - Output format (default: ``human``)
-   * - ``--engine explicit|bmc``
-     - Checking engine (default: ``explicit``). ``bmc`` runs bounded model checking.
+   * - ``--engine bmc|explicit``
+     - Checking engine (default: ``bmc``). ``bmc`` proves safety properties by
+       k-induction and searches for liveness violations up to ``--bmc-depth``.
+       ``explicit`` enumerates every reachable state and also proves liveness,
+       but only scales to small state spaces.
    * - ``--solver varisat|cadical|z3``
-     - SAT backend for the ``bmc`` engine (default: ``z3``). Requires the
-       matching Cargo feature to be compiled in; ``z3`` links the system
-       ``libz3`` (install ``libz3-dev`` / the ``z3`` package).
+     - SAT backend for the ``bmc`` engine (default: ``varisat``, pure Rust,
+       the same backend the browser uses). Requires the matching Cargo feature
+       to be compiled in; ``z3`` links the system ``libz3`` (install
+       ``libz3-dev`` / the ``z3`` package).
    * - ``--bmc-depth N``
      - Unrolling depth for the ``bmc`` engine (default: 50)
-   * - ``--prove`` (alias ``--k-induction``)
-     - Attempt k-induction to certify safety properties under ``--engine bmc``
+   * - ``--no-prove``
+     - Skip k-induction under ``--engine bmc``: report bounded results only.
+       (k-induction is on by default; ``--prove`` is accepted and does nothing.)
    * - ``--show-trace``
      - Display counterexample traces on failure
    * - ``--dump-graph``

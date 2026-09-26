@@ -33,9 +33,11 @@ What Caelum is
   and booleans, evolving through transitions.
 - A checker of **temporal properties** written in Linear Temporal Logic (LTL) —
   statements about how a system behaves *over time*, not just in one state.
-- **Exhaustive**: it reasons about every reachable state and every possible
-  ordering of events, so the bug that only shows up under one unlucky interleaving
-  has nowhere to hide.
+- **Exhaustive for safety**: it proves "never" properties for every reachable
+  state and every possible ordering of events, so the bug that only shows up
+  under one unlucky interleaving has nowhere to hide. "Eventually" properties
+  are searched for violations up to a bound; the ``explicit`` engine proves
+  them too, on small models.
 - A tool that **explains failures**: every failed property comes with a
   counterexample trace you can read.
 
@@ -48,7 +50,7 @@ What Caelum is not
   enough to explore. It is a poor fit for heavy arithmetic, floating point, or big
   data structures.
 - **Not sampling-based testing.** It does not run your real program on example
-  inputs; it checks a *model* of it, exhaustively.
+  inputs; it checks a *model* of it, symbolically.
 - **Not a programming language.** A ``.lum`` file describes behaviour and
   requirements; it does not compute results.
 

@@ -43,10 +43,15 @@ pub struct Cli {
     #[arg(long = "dump-graph", global = true)]
     dump_graph: bool,
 
-    #[arg(long, value_enum, default_value_t = Engine::Explicit, global = true)]
+    /// `bmc` (default) proves safety by k-induction and refutes liveness up
+    /// to `--bmc-depth`; `explicit` enumerates every reachable state and also
+    /// proves liveness, but only scales to small state spaces.
+    #[arg(long, value_enum, default_value_t = Engine::Bmc, global = true)]
     engine: Engine,
 
-    #[arg(long, value_enum, default_value_t = SolverChoice::Z3, global = true)]
+    /// SAT/SMT backend for `--engine bmc`. `varisat` (default) is pure Rust
+    /// and is the backend the browser build uses.
+    #[arg(long, value_enum, default_value_t = SolverChoice::Varisat, global = true)]
     solver: SolverChoice,
 
     #[arg(long = "bmc-depth", default_value_t = 50, global = true)]
@@ -54,9 +59,13 @@ pub struct Cli {
 
     /// Try k-induction on safety properties that pass the base case so we
     /// can certify them as invariants rather than just "no counterexample
-    /// within k steps". Only meaningful with `--engine bmc`.
-    #[arg(long = "prove", alias = "k-induction", global = true)]
-    prove: bool,
+    /// within k steps". On by default; only meaningful with `--engine bmc`.
+    #[arg(long = "prove", alias = "k-induction", global = true, hide = true)]
+    _prove: bool,
+
+    /// Skip k-induction: report bounded results only.
+    #[arg(long = "no-prove", global = true)]
+    no_prove: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -158,7 +167,7 @@ fn run_cli(cli: Cli) -> Result<bool> {
         engine: cli.engine,
         solver: cli.solver,
         bmc_depth: cli.bmc_depth,
-        prove: cli.prove,
+        prove: !cli.no_prove,
     };
 
     match cli.command {

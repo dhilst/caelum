@@ -72,7 +72,9 @@ impl ModuleResolver for MemResolver {
 
 /// Check a single-file spec with the in-module varisat backend. `opts_json` is
 /// a JSON object; all fields optional:
-/// `{ "engine": "explicit"|"bmc", "bmc_depth": u, "prove": bool, "max_states": u }`.
+/// `{ "engine": "bmc"|"explicit", "bmc_depth": u, "prove": bool, "max_states": u }`.
+/// Defaults: `engine = "bmc"`, `bmc_depth = 50`, `prove = true` (k-induction
+/// proves safety; liveness is refuted up to `bmc_depth`).
 /// Returns a JSON report string (or `{ "error": ... }`).
 #[wasm_bindgen]
 pub fn check_spec(source: &str, opts_json: &str) -> String {
@@ -115,11 +117,11 @@ fn run_inner(
     spec.source = elaborate(&spec.source)?;
     check_source_file(&spec.source)?;
 
-    let engine = opts.get("engine").and_then(|v| v.as_str()).unwrap_or("explicit");
+    let engine = opts.get("engine").and_then(|v| v.as_str()).unwrap_or("bmc");
     let report = match engine {
         "bmc" => {
             let depth = opts.get("bmc_depth").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
-            let prove = opts.get("prove").and_then(|v| v.as_bool()).unwrap_or(false);
+            let prove = opts.get("prove").and_then(|v| v.as_bool()).unwrap_or(true);
             check_with_bmc(
                 &spec.source,
                 &BmcOptions { depth, prove },

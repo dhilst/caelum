@@ -60,7 +60,7 @@ Caelum supports three equivalent syntaxes for every operator:
 
 ```
 caelum <spec>.lum              # check a specification (default)
-caelum check <spec>.lum        # explicit check
+caelum check <spec>.lum        # same, explicit subcommand
 caelum parse <spec>.lum        # parse only
 caelum fmt <spec>.lum          # format a specification
 ```
@@ -70,9 +70,13 @@ caelum fmt <spec>.lum          # format a specification
 | Flag | Description |
 |------|-------------|
 | `--format human\|json` | Output format (default: human) |
+| `--engine bmc\|explicit` | `bmc` (default): proves safety by k-induction, refutes liveness up to `--bmc-depth`. `explicit`: enumerates every reachable state, also proves liveness |
+| `--solver varisat\|cadical\|z3` | SAT backend for `bmc` (default: varisat) |
+| `--bmc-depth N` | Unrolling depth for `bmc` (default: 50) |
+| `--no-prove` | Skip k-induction (bounded results only) |
 | `--show-trace` | Display counterexample traces |
 | `--dump-graph` | Print the reachable transition graph |
-| `--max-states N` | Limit state exploration (default: 100,000) |
+| `--max-states N` | Limit state exploration for `explicit` (default: 100,000) |
 | `--include-path DIR` | Additional import search directories |
 | `--print-keywords` | Format output with keyword operators |
 | `--print-ascii-operators` | Format output with ASCII operators |

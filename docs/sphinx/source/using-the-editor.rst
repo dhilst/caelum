@@ -46,8 +46,15 @@ Reading the results
 
 When you run a spec, a results pane appears beneath the editor.
 
-**Passing.** Each property is listed with a pass marker. A pass means Caelum
-explored every reachable state and found no way to violate the property.
+**Passing.** Each property is listed with a ✓ and a badge:
+
+- ``certified`` — proved for every reachable state (by k-induction). Safety
+  properties usually end up here.
+- ``pass`` — no violation exists within the first 20 steps. This is what a
+  liveness property (``◇``, ``□ ◇``) gets in the browser: a counterexample
+  would be a loop, and none fits in 20 steps.
+- ``skipped`` — the property's form isn't supported by the browser's engine
+  (for example ``□ (a → ◇ b)``); rewrite it as ``□ ◇ …``.
 
 **Failing — the counterexample trace.** When a property *can* be broken, Caelum
 shows a **counterexample**: a table with one row per state, the variable values in

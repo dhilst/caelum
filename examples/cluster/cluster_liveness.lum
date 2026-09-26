@@ -6,7 +6,8 @@ module examples.cluster_liveness
 // that starts powering on eventually finishes provisioning. Without a fairness
 // assumption this fails — an infinite run could service other nodes (or `idle`)
 // forever and never power this one on. The `fairness { weak node_powers_on }`
-// block rules out those unfair runs, and the explicit engine proves the property.
+// block rules out those unfair runs. The BMC engine (default) finds no
+// counterexample up to the search depth; `--engine explicit` proves it.
 //
 // Demonstrates: indexed state, parameterized transitions, `unchanged` (with
 // `except`), quantifiers, and a `fairness` block.
@@ -68,10 +69,14 @@ fairness {
   weak node_powers_on
 }
 
-// Liveness: once powering on, a node eventually reaches provisioned.
-property provisioning_finishes {
-  □ (
-    ∀ node ∈ Node:
-      status[node] = powering_on → ◇ (status[node] = provisioned)
-  )
+// Liveness: a node never stays powering_on forever. Since the only way out
+// of powering_on is to provisioned, this says "once powering on, a node
+// eventually reaches provisioned", in the `□ ◇` form the BMC engine checks.
+// `□ ◇` doesn't distribute over `∀`, so there is one property per node.
+property n1_provisioning_finishes {
+  □ ◇ (status[n1] ≠ powering_on)
+}
+
+property n2_provisioning_finishes {
+  □ ◇ (status[n2] ≠ powering_on)
 }

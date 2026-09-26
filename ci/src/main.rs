@@ -103,9 +103,11 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     let timeout = Duration::from_secs(60);
 
+    // Examples run on a release build: the default BMC engine (SAT solving +
+    // k-induction) is an order of magnitude slower unoptimised.
     println!("harness: building project...");
     let build = Command::new("cargo")
-        .args(["build", "--quiet", "-p", "caelum-cli"])
+        .args(["build", "--quiet", "--release", "-p", "caelum-cli"])
         .status();
     match build {
         Ok(s) if s.success() => {}
@@ -136,16 +138,15 @@ fn main() -> ExitCode {
         });
     }
 
-    // Submit example jobs
+    // Submit example jobs. They run the release binary built above directly:
+    // parallel `cargo run` invocations serialise on cargo's build lock.
+    let caelum = Path::new("target/release/caelum").to_path_buf();
     for path in lum_files {
         let tx = tx.clone();
+        let caelum = caelum.clone();
         pool.execute(move || {
             let name = path.display().to_string();
-            let outcome = run_with_timeout(
-                "cargo",
-                &["run", "--quiet", "-p", "caelum-cli", "--", &name],
-                timeout,
-            );
+            let outcome = run_with_timeout(caelum.to_str().unwrap_or("caelum"), &[&name], timeout);
             let _ = tx.send(JobResult { name, outcome });
         });
     }
