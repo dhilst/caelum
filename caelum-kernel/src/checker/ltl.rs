@@ -658,42 +658,75 @@ fn sccs_within(graph: &ModelGraph, subset: &HashSet<usize>) -> Vec<Vec<usize>> {
     sccs
 }
 
-/// Does `comp` (an SCC within `subset`) admit an infinite **fair** path — i.e.
-/// a cycle satisfying every fairness constraint?
-fn scc_is_fair(comp: &[usize], graph: &ModelGraph, fair: &Fair, subset: &HashSet<usize>) -> bool {
-    let members: HashSet<usize> = comp.iter().copied().collect();
+/// Fair SCCs within `subset`: strongly connected sets whose covering cycle
+/// satisfies every fairness constraint.
+///
+/// Judging a whole SCC is not enough under strong fairness: an SCC where a
+/// strongly fair transition is enabled somewhere but never taken may still
+/// contain a fair cycle that avoids the states where it is enabled. Such an
+/// SCC is refined (Emerson–Lei): drop the states enabling the violated
+/// constraint, recompute SCCs on the remainder, and check those.
+fn fair_sccs(graph: &ModelGraph, fair: &Fair, subset: &HashSet<usize>) -> Vec<Vec<usize>> {
+    let mut result = Vec::new();
+    let mut work = sccs_within(graph, subset);
+    while let Some(comp) = work.pop() {
+        let members: HashSet<usize> = comp.iter().copied().collect();
 
-    // Must have an internal cycle: nontrivial, or a self-loop.
-    let has_cycle = comp.len() > 1
-        || graph.edges[comp[0]]
-            .iter()
-            .any(|&w| w == comp[0] && subset.contains(&w));
-    if !has_cycle {
-        return false;
-    }
-
-    fair.constraints.iter().all(|c| {
-        let taken = comp.iter().any(|&s| {
-            graph.edges[s]
-                .iter()
-                .any(|&s2| members.contains(&s2) && relation_holds(c.relation, graph, s, s2))
-        });
-        match c.strength {
-            // weak: fair unless enabled at *every* state yet never taken.
-            FairnessStrength::Weak => !comp.iter().all(|s| c.enabled.contains(s)) || taken,
-            // strong: fair unless enabled at *some* state yet never taken.
-            FairnessStrength::Strong => !comp.iter().any(|s| c.enabled.contains(s)) || taken,
+        // Must have an internal cycle: nontrivial, or a self-loop.
+        let has_cycle = comp.len() > 1 || graph.edges[comp[0]].contains(&comp[0]);
+        if !has_cycle {
+            continue;
         }
-    })
+
+        let taken = |c: &FairConstraint| {
+            comp.iter().any(|&s| {
+                graph.edges[s]
+                    .iter()
+                    .any(|&s2| members.contains(&s2) && relation_holds(c.relation, graph, s, s2))
+            })
+        };
+
+        // weak: violated if enabled at *every* state yet never taken. Every
+        // sub-cycle is enabled everywhere too and takes no more, so the
+        // whole component is unfair.
+        let weak_violated = fair.constraints.iter().any(|c| {
+            c.strength == FairnessStrength::Weak
+                && comp.iter().all(|s| c.enabled.contains(s))
+                && !taken(c)
+        });
+        if weak_violated {
+            continue;
+        }
+
+        // strong: violated if enabled at *some* state yet never taken. A fair
+        // cycle may still exist among the states where it is disabled.
+        let strong_violated = fair.constraints.iter().find(|c| {
+            c.strength == FairnessStrength::Strong
+                && comp.iter().any(|s| c.enabled.contains(s))
+                && !taken(c)
+        });
+        match strong_violated {
+            None => result.push(comp),
+            Some(c) => {
+                let rest: HashSet<usize> = comp
+                    .iter()
+                    .copied()
+                    .filter(|s| !c.enabled.contains(s))
+                    .collect();
+                if !rest.is_empty() {
+                    work.extend(sccs_within(graph, &rest));
+                }
+            }
+        }
+    }
+    result
 }
 
 /// `E_fair G subset` — states with an infinite fair path staying in `subset`.
 fn fair_eg(subset: &HashSet<usize>, graph: &ModelGraph, fair: &Fair) -> HashSet<usize> {
     let mut seeds = HashSet::new();
-    for comp in sccs_within(graph, subset) {
-        if scc_is_fair(&comp, graph, fair, subset) {
-            seeds.extend(comp);
-        }
+    for comp in fair_sccs(graph, fair, subset) {
+        seeds.extend(comp);
     }
     reach_backward(graph, &seeds, Some(subset))
 }
@@ -789,12 +822,10 @@ fn fair_lasso(
     // States belonging to some fair SCC within `cycle_within`, and each state's
     // component members.
     let mut member_of: HashMap<usize, HashSet<usize>> = HashMap::new();
-    for comp in sccs_within(graph, cycle_within) {
-        if scc_is_fair(&comp, graph, fair, cycle_within) {
-            let members: HashSet<usize> = comp.iter().copied().collect();
-            for &s in &comp {
-                member_of.insert(s, members.clone());
-            }
+    for comp in fair_sccs(graph, fair, cycle_within) {
+        let members: HashSet<usize> = comp.iter().copied().collect();
+        for &s in &comp {
+            member_of.insert(s, members.clone());
         }
     }
 
@@ -1020,6 +1051,32 @@ mod tests {
                 .expect("check")
                 .status,
             CheckStatus::Pass
+        );
+    }
+
+    #[test]
+    fn strong_fairness_admits_fair_sub_cycle() {
+        // The SCC {x=0, x=1, x=2} (served = false) enables `serve` only at
+        // x = 2, and `serve` leaves the SCC. The SCC as a whole violates
+        // strong fairness, but the sub-cycle 0 ↔ 1 never enables `serve`, so
+        // it is a fair run on which `served` never holds.
+        let source = r"
+            let x : 0..2
+            let served : bool
+            init { x = 0 ∧ served = false }
+            transition up01 { x = 0 ∧ x' = 1 ∧ served' = served }
+            transition dn10 { x = 1 ∧ x' = 0 ∧ served' = served }
+            transition up12 { x = 1 ∧ x' = 2 ∧ served' = served }
+            transition dn21 { x = 2 ∧ x' = 1 ∧ served' = served }
+            transition serve { x = 2 ∧ served = false ∧ served' = true ∧ x' = 0 }
+            fairness { strong serve }
+            property eventually_served { ◇ served }
+        ";
+        let report = report(source).expect("check");
+        assert_eq!(
+            report.status,
+            CheckStatus::Fail,
+            "a fair sub-cycle avoiding the enabling states must be found"
         );
     }
 

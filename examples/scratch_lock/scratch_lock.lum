@@ -26,9 +26,10 @@ module examples.scratch_lock
 //      crash host may recover a stale lock — encoded in the guard of `acquire`.
 //   A1 create and recover are atomic (CAS) on the scratch space
 //   A2 processes finish: a holder eventually releases or crashes
-//   A3 processes eventually succeed: a waiter eventually acquires
-//      (a waiter that gives up leaves no trace in the lock, so safety is
-//       unaffected by dropping timeouts)
+//   A3 an acquire that keeps becoming possible eventually happens
+//      (strong fairness: timeouts can't win forever; a waiter that gives up
+//       leaves no trace in the lock, so safety is unaffected by dropping
+//       timeouts)
 //   A4 a crashed process comes back: its host keeps starting new runs — implicit:
 //      there is no idle step, so when everyone waits on a stale lock the
 //      crash host's spawn is the only move
@@ -127,7 +128,9 @@ property crash_recoverable {
 
 // ── Liveness: work progresses ───────────────────────────────────────────────
 
-// L2. Every waiting process eventually gets the lock.
+// L2. The lock keeps being taken: the pipeline as a whole never stalls.
+// Per-process progress does NOT hold: a process that keeps crashing and
+// recovering its own stale lock can starve processes on other hosts.
 property work_progresses {
-  □ (∀ p ∈ Proc: st[p] = waiting → ◇ (st[p] = holding))
+  □ ◇ (lock = locked)
 }

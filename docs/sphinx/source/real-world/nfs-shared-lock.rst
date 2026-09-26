@@ -106,9 +106,10 @@ don't interact, so one is enough.
   as one step on NFS (``mkdir`` fails if the directory already exists;
   ``rename`` is atomic).
 - **A2 Processes finish.** A holder eventually releases the lock or crashes.
-- **A3 Processes eventually succeed.** A waiting run eventually gets the lock.
-  Timeouts are left out: a run that gives up never touched the lock, so
-  it can't affect safety.
+- **A3 Acquires eventually happen.** An ``acquire`` that keeps becoming
+  possible eventually succeeds, so timeouts can't win forever. Timeouts are
+  left out: a run that gives up never touched the lock, so it can't affect
+  safety.
 - **A4 A crashed process comes back.** Its host keeps starting new runs, so
   someone is there to recover its stale lock.
 - **A5 Unique machine-id (environment).** ``/etc/machine-id`` is unique for
@@ -151,9 +152,10 @@ Click **Check** to verify it in your browser:
    //      crash host may recover a stale lock — encoded in the guard of `acquire`.
    //   A1 create and recover are atomic (CAS) on the scratch space
    //   A2 processes finish: a holder eventually releases or crashes
-   //   A3 processes eventually succeed: a waiter eventually acquires
-   //      (a waiter that gives up leaves no trace in the lock, so safety is
-   //       unaffected by dropping timeouts)
+   //   A3 an acquire that keeps becoming possible eventually happens
+   //      (strong fairness: timeouts can't win forever; a waiter that gives up
+   //       leaves no trace in the lock, so safety is unaffected by dropping
+   //       timeouts)
    //   A4 a crashed process comes back: its host keeps starting new runs — implicit:
    //      there is no idle step, so when everyone waits on a stale lock the
    //      crash host's spawn is the only move
@@ -252,9 +254,11 @@ Click **Check** to verify it in your browser:
 
    // ── Liveness: work progresses ───────────────────────────────────────────────
 
-   // L2. Every waiting process eventually gets the lock.
+   // L2. The lock keeps being taken: the pipeline as a whole never stalls.
+   // Per-process progress does NOT hold: a process that keeps crashing and
+   // recovering its own stale lock can starve processes on other hosts.
    property work_progresses {
-     □ (∀ p ∈ Proc: st[p] = waiting → ◇ (st[p] = holding))
+     □ ◇ (lock = locked)
    }
 
 **Properties:**
@@ -268,7 +272,17 @@ Click **Check** to verify it in your browser:
   host, so the liveness check in A0 is asked of the right host.
 - ``crash_recoverable`` (liveness, *no deadlock*): a lock left behind by a
   crash is eventually taken back by a process on the crash host.
-- ``work_progresses`` (liveness): every waiting run eventually gets the lock.
+- ``work_progresses`` (liveness): the lock keeps being taken, so the pipeline
+  as a whole never stalls.
+
+**Per-process progress does not hold.** A stronger property, "every waiting
+run eventually gets the lock" (``□ (∀ p: waiting(p) → ◇ holding(p))``), is
+false. Caelum finds a fair run in which a process on one host keeps crashing
+and recovering its own stale lock, while processes on the other host wait
+forever: the lock is always either held or stale-and-owned-by-the-other-host,
+so their ``acquire`` is never even enabled. A crash-looping job can monopolise
+the lock. In practice the waiting jobs time out, and the crash loop itself
+shows up in the pipeline.
 
 **What the model doesn't cover.** If the crashed process never comes back (A4 is
 false), its stale lock stays forever. No protocol without communication can
