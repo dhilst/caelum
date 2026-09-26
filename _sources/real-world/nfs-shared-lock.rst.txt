@@ -69,9 +69,11 @@ The spec below models the lock of **one** directory: every process in it is a
 run of the same job that wants that directory. Locks on different directories
 don't interact, so one is enough.
 
-- **Hosts and processes.** Two hosts, three process slots. Host 0 has two
-  slots, so two runs on the same host can race to recover a crashed lock;
-  host 1 has one slot and plays the "other host". ``host(p) = p / 2``.
+- **Hosts and processes.** Two hosts, ``local`` and ``remote``, and three
+  process slots. ``local`` has two slots, so two runs on the same host can
+  race to recover a crashed lock; ``remote`` has one slot and plays the
+  "other host". Where each process runs is a static fact, ``host[p]``, fixed
+  in its own ``init`` block and kept ``unchanged`` by every transition.
 - **Process state.** Each slot is ``free`` (not running, finished, or
   crashed), ``waiting`` (inside ``acquire``) or ``holding`` (owns the lock and
   may write).
@@ -87,7 +89,7 @@ don't interact, so one is enough.
 
 - **A0 Same-host liveness check (safety).** Only the recorded host can decide
   that the holder is dead, so only it may recover. This is the guard
-  ``owner = p / 2`` in ``acquire``.
+  ``owner = host[p]`` in ``acquire``.
 - **A1 Atomic create/replace.** Checking the lock file and writing it happen
   as one step on NFS (e.g. exclusive create, or ``link()`` + link count
   check).
@@ -119,8 +121,8 @@ Click **Check** to verify it in your browser:
    // can take a free lock. If the holder crashes its record stays behind, stale.
    //
    // Structure:
-   //   H = {0, 1},  P = {0, 1, 2},  host(p) = p / 2
-   //   host 0 runs pids 0, 1 (same-host recovery race); host 1 runs pid 2 (remote)
+   //   H = {local, remote},  P = {0, 1, 2},  host[p] = the host p runs at
+   //   local runs pids 0, 1 (same-host recovery race); remote runs pid 2
    //
    // Lock record:  rec ∈ {none, live, stale},  owner = host field of the record.
    // Pids are unique (pid + start time), so only a crash makes a record stale.
@@ -139,7 +141,7 @@ Click **Check** to verify it in your browser:
    //      there is no idle step, so when everyone waits on a stale lock the
    //      crash host's spawn is the only move
 
-   type Host = 0..1
+   type Host = enum { local, remote }
    type Proc = 0..2
 
    type PState = enum { free, waiting, holding }  // free = slot empty (never started / done / crashed)
@@ -148,27 +150,36 @@ Click **Check** to verify it in your browser:
    let st[p ∈ Proc] ∈ PState
    let rec   ∈ Record
    let owner ∈ Host
+   let host[p ∈ Proc] ∈ Host   // static fact, fixed in init; every transition keeps it unchanged
 
+   // Static facts: where each process runs (never changes).
    init {
-     (∀ p ∈ Proc: st[p] = free) ∧ rec = none ∧ owner = 0
+     host[0] = local ∧
+     host[1] = local ∧
+     host[2] = remote
+   }
+
+   // Initial state: nobody running, no lock.
+   init {
+     (∀ p ∈ Proc: st[p] = free) ∧ rec = none ∧ owner = local
    }
 
    // A new process starts and calls acquire.
    transition spawn(p ∈ Proc) {
      st[p] = free ∧
      st[p]' = waiting ∧
-     unchanged(st except p, rec, owner)
+     unchanged(st except p, rec, owner, host)
    }
 
    // acquire → ok (atomic CAS, A1): take a free lock (any host), or recover a
    // stale one — only on the owner's host (A0).
    transition acquire(p ∈ Proc) {
      st[p] = waiting ∧
-     (rec = none ∨ (rec = stale ∧ owner = p / 2)) ∧
+     (rec = none ∨ (rec = stale ∧ owner = host[p])) ∧
      st[p]' = holding ∧
      rec' = live ∧
-     owner' = p / 2 ∧
-     unchanged(st except p)
+     owner' = host[p] ∧
+     unchanged(st except p, host)
    }
 
    // The holder finishes and releases the lock.
@@ -176,7 +187,7 @@ Click **Check** to verify it in your browser:
      st[p] = holding ∧
      st[p]' = free ∧
      rec' = none ∧
-     unchanged(st except p, owner)
+     unchanged(st except p, owner, host)
    }
 
    // The holder crashes: its record is left behind, stale.
@@ -184,7 +195,7 @@ Click **Check** to verify it in your browser:
      st[p] = holding ∧
      st[p]' = free ∧
      rec' = stale ∧
-     unchanged(st except p, owner)
+     unchanged(st except p, owner, host)
    }
 
    fairness {
@@ -208,7 +219,7 @@ Click **Check** to verify it in your browser:
 
    // S3. The lock file names the holder's host.
    property record_matches_holder {
-     □ (∀ p ∈ Proc: st[p] = holding → (rec = live ∧ owner = p / 2))
+     □ (∀ p ∈ Proc: st[p] = holding → (rec = live ∧ owner = host[p]))
    }
 
    // ── Liveness: crash is recoverable ──────────────────────────────────────────
