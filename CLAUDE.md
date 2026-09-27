@@ -49,7 +49,6 @@ z3.js.
 ## Examples layout
 
 - `examples/simple/` — small standalone specs
-- `examples/game_of_life/` — Game of Life grid specs
 - `examples/refinement/` — iterative refinement rounds
 
 ## Documentation
